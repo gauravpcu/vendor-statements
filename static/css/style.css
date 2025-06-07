@@ -1,0 +1,34 @@
+/* Basic styling for progress bar */
+#overallProgressContainer {
+    width: 100%;
+    background-color: #f3f3f3;
+    border: 1px solid #ccc;
+    margin-bottom: 10px;
+}
+
+#overallProgressBar {
+    width: 0%; /* Initial width */
+    height: 30px;
+    background-color: #4caf50;
+    text-align: center; /* To center text if you add any */
+    line-height: 30px; /* To vertically center text */
+    color: white;
+}
+
+#fileStatuses p {
+    margin: 5px 0;
+    padding: 5px;
+    border-bottom: 1px solid #eee;
+}
+
+#fileStatuses p:last-child {
+    border-bottom: none;
+}
+
+.success {
+    color: green;
+}
+
+.failure {
+    color: red;
+}
