@@ -55,16 +55,34 @@ document.addEventListener('DOMContentLoaded', function () {
                         results.forEach(function (result, index) {
                             const fileEntryDiv = document.createElement('div');
                             fileEntryDiv.className = 'file-entry';
+                            fileEntryDiv.setAttribute('data-filename', result.filename); // Store filename for easy access
 
                             const statusP = document.createElement('p');
+                            statusP.innerHTML = `<strong>File:</strong> ${result.filename} `; // Display filename
+
+                            // Add "View Original" link
+                            const viewLink = document.createElement('a');
+                            viewLink.href = `/view_uploaded_file/${encodeURIComponent(result.filename)}`;
+                            viewLink.textContent = 'View Original';
+                            viewLink.className = 'view-original-link';
+                            viewLink.target = '_blank';
+                            statusP.appendChild(document.createTextNode(' (')); // Add opening parenthesis
+                            statusP.appendChild(viewLink);
+                            statusP.appendChild(document.createTextNode(')')); // Add closing parenthesis
+
+                            // Append original status message and type display
+                            statusP.appendChild(document.createElement('br')); // Line break
                             let typeDisplay = result.file_type;
                             if (result.file_type && result.file_type.startsWith("error_")) {
                                 typeDisplay = `Error (${result.file_type.split('_')[1]})`;
                             } else if (!result.success && !supportedTypes.includes(result.file_type ? result.file_type.toUpperCase() : "")){
                                 typeDisplay = `Unsupported (${result.file_type || 'unknown'})`;
                             }
-                            statusP.textContent = `${result.filename}: ${result.message} (Type: ${typeDisplay})`;
-                            statusP.className = result.success ? 'success' : 'failure';
+                            const messageSpan = document.createElement('span');
+                            messageSpan.textContent = `${result.message} (Type: ${typeDisplay})`;
+                            messageSpan.className = result.success ? 'success-inline' : 'failure-inline'; // Use inline styling classes
+                            statusP.appendChild(messageSpan);
+
                             fileEntryDiv.appendChild(statusP);
 
                             // Display headers if available
@@ -208,6 +226,154 @@ document.addEventListener('DOMContentLoaded', function () {
                                     cellChatHelp.appendChild(chatHelpButton);
                                 });
                                 fileEntryDiv.appendChild(mappingsTable);
+
+                                // Add "Process File" button for this file entry
+                                const processFileButton = document.createElement('button');
+                                processFileButton.textContent = 'Process File Data';
+                                processFileButton.className = 'process-file-button';
+                                // Store necessary info on the button - result.filename is assumed to be the identifier
+                                processFileButton.setAttribute('data-file-identifier', result.filename);
+                                processFileButton.setAttribute('data-file-type', result.file_type); // Assuming result.file_type holds CSV, XLSX etc.
+                                fileEntryDiv.appendChild(processFileButton);
+
+                                processFileButton.addEventListener('click', function() {
+                                    const fileIdentifier = this.getAttribute('data-file-identifier');
+                                    const fileType = this.getAttribute('data-file-type');
+                                    const currentMappings = [];
+
+                                    // Find the table associated with this button's fileEntryDiv
+                                    const tableBody = this.closest('.file-entry').querySelector('.mappings-table tbody');
+                                    if (tableBody) {
+                                        tableBody.querySelectorAll('tr').forEach(row => {
+                                            const originalHeader = row.cells[0].textContent; // Assuming first cell is original header
+                                            const selectElement = row.cells[1].querySelector('select.mapped-field-select');
+                                            const mappedField = selectElement ? selectElement.value : 'N/A';
+                                            // Confidence isn't strictly needed by backend for this step, but good to gather
+                                            const confidenceText = row.cells[2].textContent;
+                                            const confidenceScore = parseFloat(confidenceText.replace('%','')) || 0;
+
+                                            currentMappings.push({
+                                                original_header: originalHeader,
+                                                mapped_field: mappedField,
+                                                confidence_score: confidenceScore // Or some default/current value
+                                            });
+                                        });
+                                    }
+
+                                    console.log("Finalized Mappings for processing:", currentMappings);
+                                    addBotMessage(`Processing file: ${fileIdentifier}...`); // Using bot message for feedback
+
+                                    fetch('/process_file_data', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            file_identifier: fileIdentifier,
+                                            file_type: fileType,
+                                            finalized_mappings: currentMappings
+                                        })
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        console.log('Process File Response:', data);
+                                            const fileEntryDiv = this.closest('.file-entry'); // Get the parent file-entry div
+                                            let dataDisplayContainer = fileEntryDiv.querySelector('.extracted-data-container');
+
+                                            if (!dataDisplayContainer) {
+                                                dataDisplayContainer = document.createElement('div');
+                                                dataDisplayContainer.className = 'extracted-data-container';
+                                                fileEntryDiv.appendChild(dataDisplayContainer);
+                                            }
+                                            dataDisplayContainer.innerHTML = ''; // Clear previous data
+
+                                        if (data.error) {
+                                            addBotMessage(`Error processing file ${fileIdentifier}: ${data.error}`);
+                                                const errorP = document.createElement('p');
+                                                errorP.className = 'failure';
+                                                errorP.textContent = `Error extracting data: ${data.error}`;
+                                                dataDisplayContainer.appendChild(errorP);
+                                            } else if (data.data && data.data.length > 0) {
+                                                addBotMessage(`Successfully processed ${fileIdentifier}. ${data.message || ''} Displaying ${data.data.length} extracted records.`);
+
+                                                const table = document.createElement('table');
+                                                table.className = 'extracted-data-table';
+
+                                                const thead = table.createTHead();
+                                                const headerRow = thead.insertRow();
+                                                const headers = Object.keys(data.data[0]);
+                                                headers.forEach(headerText => {
+                                                    const th = document.createElement('th');
+                                                    th.textContent = headerText;
+                                                    headerRow.appendChild(th);
+                                                });
+
+                                                const tbody = table.createTBody();
+                                                data.data.forEach(record => {
+                                                    const row = tbody.insertRow();
+                                                    headers.forEach(mapped_field_name => { // headers are the mapped_field_names
+                                                        const cell = row.insertCell();
+                                                        const cellValue = record[mapped_field_name];
+                                                        cell.textContent = cellValue !== undefined && cellValue !== null ? cellValue : '';
+
+                                                        // Basic Data Validation and Highlighting
+                                                        if (FIELD_DEFINITIONS && FIELD_DEFINITIONS[mapped_field_name] && cellValue !== null && cellValue !== "") {
+                                                            const expectedType = FIELD_DEFINITIONS[mapped_field_name].expected_type;
+                                                            let isValid = true;
+                                                            const valueStr = String(cellValue).trim();
+
+                                                            switch (expectedType) {
+                                                                case 'date':
+                                                                    // Check if it's a number (like Excel date serial) OR can be parsed as a date.
+                                                                    // This is a very basic check. Robust date parsing is complex.
+                                                                    if (!/^\d{5,}$/.test(valueStr) && isNaN(new Date(valueStr).getTime())) {
+                                                                        isValid = false;
+                                                                    }
+                                                                    break;
+                                                                case 'number':
+                                                                case 'currency': // Basic check: treat like number. Allow symbols for now.
+                                                                    // Remove common currency symbols and then check for number.
+                                                                    // This regex removes $, €, £, ¥, commas and spaces.
+                                                                    const numericValue = valueStr.replace(/[\$\€\£\¥,\s]/g, '');
+                                                                    if (isNaN(parseFloat(numericValue)) || !isFinite(parseFloat(numericValue))) {
+                                                                        isValid = false;
+                                                                    }
+                                                                    break;
+                                                                case 'percentage':
+                                                                    const percValue = valueStr.replace(/[%,\s]/g, '');
+                                                                    if (isNaN(parseFloat(percValue)) || !isFinite(parseFloat(percValue))) {
+                                                                        isValid = false;
+                                                                    }
+                                                                    break;
+                                                                case 'string':
+                                                                    // Most non-null/empty strings are fine.
+                                                                    // Specific string format validation (e.g. email) is more advanced.
+                                                                    break;
+                                                                default:
+                                                                    // No specific validation for unknown types
+                                                                    break;
+                                                            }
+                                                            if (!isValid) {
+                                                                cell.classList.add('data-validation-error');
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                                dataDisplayContainer.appendChild(table);
+                                                // Scroll to the new table
+                                                dataDisplayContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                        } else {
+                                                addBotMessage(`No data was extracted for ${fileIdentifier} based on the current mappings or the file is empty.`);
+                                                const noDataP = document.createElement('p');
+                                                noDataP.textContent = 'No data was extracted or the file is empty.';
+                                                dataDisplayContainer.appendChild(noDataP);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error processing file:', error);
+                                        addBotMessage(`Network or system error processing file ${fileIdentifier}: ${error.toString()}`);
+                                        alert(`Error processing file: ${error.toString()}`);
+                                    });
+                                });
+
 
                                 let currentChatbotOriginalHeader = null; // Variable to store context
 

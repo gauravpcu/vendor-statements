@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import magic
 import logging
 import json # For loading field definitions
-from file_parser import extract_headers
+from file_parser import extract_headers, extract_data
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from header_mapper import generate_mappings
-from chatbot_service import get_mapping_suggestions # Import the chatbot service
+from chatbot_service import get_mapping_suggestions
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -256,6 +256,66 @@ def chatbot_suggest_mapping_route():
     except Exception as e:
         logger.error(f"Error in /chatbot_suggest_mapping route for header '{original_header}': {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred while generating suggestions."}), 500
+
+@app.route('/process_file_data', methods=['POST'])
+def process_file_data_route():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    file_identifier = data.get('file_identifier') # This could be a path or a unique ID
+    finalized_mappings = data.get('finalized_mappings')
+    file_type = data.get('file_type') # Client should send this based on initial upload info
+
+    if not file_identifier or not finalized_mappings or not file_type:
+        missing_fields = []
+        if not file_identifier: missing_fields.append('file_identifier')
+        if not finalized_mappings: missing_fields.append('finalized_mappings')
+        if not file_type: missing_fields.append('file_type')
+        return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+    # Resolve file_identifier to an actual file_path.
+    # For this example, we'll assume file_identifier is the filename and it's in UPLOAD_FOLDER.
+    # In a real app, this might involve looking up a unique ID.
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
+    if not os.path.exists(file_path):
+        # Try with the identifier directly if it might be an absolute path (less secure, usually avoid)
+        if not os.path.exists(file_identifier):
+             logger.error(f"File not found at path: {file_path} or identifier: {file_identifier}")
+             return jsonify({"error": f"File not found: {file_identifier}"}), 404
+        else:
+            file_path = file_identifier # Use the direct identifier if it's a valid path
+
+
+    logger.info(f"Processing data for file: {file_path} with type: {file_type}")
+
+    try:
+        extracted_data_result = extract_data(file_path, file_type, finalized_mappings)
+
+        if isinstance(extracted_data_result, dict) and "error" in extracted_data_result:
+            logger.error(f"Error during data extraction for {file_path}: {extracted_data_result['error']}")
+            return jsonify(extracted_data_result), 400 # Or 500 depending on error type
+
+        return jsonify({'data': extracted_data_result, 'message': f'Successfully processed {len(extracted_data_result)} records.' if isinstance(extracted_data_result, list) else 'Processed data.'})
+    except Exception as e:
+        logger.error(f"Error in /process_file_data route for file {file_path}: {e}", exc_info=True)
+        return jsonify({"error": "An internal error occurred while processing file data."}), 500
+
+@app.route('/view_uploaded_file/<path:filename>') # Using <path:filename> to handle potential subdirectories or complex names, though not strictly needed if UPLOAD_FOLDER is flat
+def view_uploaded_file(filename):
+    try:
+        # Ensure UPLOAD_FOLDER is absolute or correctly relative for send_from_directory
+        upload_folder_abs = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        logger.info(f"Attempting to serve file: {filename} from folder: {upload_folder_abs}")
+
+        # send_from_directory handles security aspects like preventing directory traversal.
+        return send_from_directory(upload_folder_abs, filename, as_attachment=False)
+    except FileNotFoundError:
+        logger.error(f"File not found when trying to serve: {filename} from {upload_folder_abs}")
+        return "File not found.", 404
+    except Exception as e:
+        logger.error(f"Error serving file {filename}: {e}", exc_info=True)
+        return "Error serving file.", 500
 
 
 if __name__ == "__main__":

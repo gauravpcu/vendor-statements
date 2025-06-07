@@ -305,6 +305,86 @@
     padding: 6px 8px; /* Adjusted padding slightly */
 }
 
+/* Process File Button Styling */
+.process-file-button {
+    display: block; /* Make it take its own line */
+    margin: 15px 0 5px 0; /* Margin top/bottom, centered if parent is text-align: center */
+    padding: 10px 15px;
+    font-size: 1em;
+    color: #fff;
+    background-color: #28a745; /* Green color for go/process */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.process-file-button:hover {
+    background-color: #218838; /* Darker green */
+}
+
+/* Extracted Data Table Styling */
+.extracted-data-container {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 2px solid #007bff; /* Blue separator */
+    max-height: 400px; /* Max height before container scrolls */
+    overflow-y: auto; /* Enable vertical scroll for the container */
+    overflow-x: auto; /* Enable horizontal scroll for wide tables */
+}
+
+.extracted-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em; /* Slightly smaller font for dense data */
+    margin-bottom: 10px; /* Space at the bottom if content follows */
+}
+
+.extracted-data-table th,
+.extracted-data-table td {
+    border: 1px solid #dee2e6; /* Lighter border for data table */
+    padding: 5px 7px; /* Slightly tighter padding */
+    text-align: left;
+    vertical-align: top;
+}
+
+.extracted-data-table th {
+    background-color: #e9ecef; /* Light grey for headers */
+    color: #495057; /* Darker text for headers */
+    font-weight: bold;
+    position: sticky; /* Sticky headers */
+    top: 0; /* Required for sticky */
+    z-index: 1; /* Ensure headers are above scrolling content if container scrolls */
+}
+
+.extracted-data-table td.data-validation-error {
+    background-color: #f8d7da; /* Light red, similar to .confidence-low */
+    color: #721c24; /* Dark red text */
+    /* Optionally, add a more prominent border or icon */
+    /* border: 1px solid #d9534f; */
+}
+/* Add a small visual cue like a dot or a subtle icon for errors, if desired */
+/* .data-validation-error::before { content: "⚠️ "; font-size: 0.8em; } */
+
+.view-original-link {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 0.9em; /* Slightly smaller if needed */
+}
+
+.view-original-link:hover {
+    text-decoration: underline;
+}
+
+.success-inline {
+    color: green; /* Or use existing .success color if defined */
+}
+
+.failure-inline {
+    color: red; /* Or use existing .failure color if defined */
+}
+
+
 /* Field Tooltip Styling */
 .field-tooltip-trigger {
     cursor: help; /* Indicate it provides help */
