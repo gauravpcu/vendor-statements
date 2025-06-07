@@ -1,0 +1,82 @@
+{
+  "InvoiceID": [
+    "Invoice ID", "Invoice Number", "Inv No", "Invoice #", "Document No",
+    "Bill Number", "Reference Number", "Transaction ID", "Belegnummer", "Número de Factura",
+    "Numéro de Facture", "Numero Fattura", "Fakturanummer", "ID", "Doc ID",
+    "Rechnungsnummer", "Fakt-Nr.", "Invoice #", "Inv. Nr.", "Ref No"
+  ],
+  "InvoiceDate": [
+    "Invoice Date", "Date Issued", "Inv Date", "Transaction Date", "Bill Date",
+    "Date of Invoice", "Posting Date", "Service Date", "Statement Date", "Issue Date",
+    "Rechnungsdatum", "Fecha de Factura", "Date de Facture", "Data Fattura", "Fakturadatum",
+    "Inv. Date", "Dt. Invoice", "Date", "Datum", "Fecha"
+  ],
+  "VendorName": [
+    "Vendor Name", "Supplier Name", "Seller", "Billed By", "From",
+    "Merchant Name", "Company Name", "Payee", "Kreditor", "Nombre del Proveedor",
+    "Nom du Vendeur", "Nome Fornitore", "Leverantörsnamn", "Supplier", "Vendor",
+    "Lieferant", "Fournisseur", "Fornitore", "Creditor", "Pay To"
+  ],
+  "TotalAmount": [
+    "Total Amount", "Amount Due", "Net Amount", "Grand Total", "Total",
+    "Balance Due", "Invoice Total", "Payment Amount", "Total Value", "Final Amount",
+    "Gesamtbetrag", "Importe Total", "Montant Total", "Importo Totale", "Totalt Belopp",
+    "Amt.", "Net", "Balance", "Sum", "Total Sum"
+  ],
+  "ItemDescription": [
+    "Item Description", "Description", "Product Description", "Service Description", "Details",
+    "Item Name", "Service", "Product", "Artikelbeschreibung", "Descripción del Artículo",
+    "Description de l'Article", "Descrizione Articolo", "Artikelbeskrivning", "Desc.", "Item",
+    "Leistungsbeschreibung", "Positionstext", "Notes", "Remarks", "Work Description"
+  ],
+  "ItemQuantity": [
+    "Quantity", "Qty", "Units", "Hours", "Number of Items",
+    "Amount", "Count", "Menge", "Cantidad", "Quantité",
+    "Quantità", "Antal", "Anz.", "Stück", "No."
+  ],
+  "ItemPrice": [
+    "Unit Price", "Price Per Unit", "Item Price", "Rate", "Price",
+    "Cost Per Unit", "Einzelpreis", "Precio Unitario", "Prix Unitaire", "Prezzo Unitario",
+    "Styckpris", "Preis", "Tariff", "Cost", "Unit Cost"
+  ],
+  "SubTotal": [
+    "Subtotal", "Sub Total", "Net Total", "Amount Before Tax", "Base Amount",
+    "Zwischensumme", "Subtotal", "Sous-Total", "Subtotale", "Delsumma",
+    "Total (Excl. Tax)", "Summe netto", "Base", "Pre-Tax Total", "Net Sum"
+  ],
+  "TaxAmount": [
+    "Tax Amount", "VAT Amount", "Sales Tax", "Tax", "GST Amount",
+    "MwSt.", "IVA", "TVA", "Imposta", "Moms",
+    "Steuerbetrag", "Tax Total", "Total Tax", "VAT", "Sales Tax Amount"
+  ],
+  "DueDate": [
+    "Due Date", "Payment Due", "Pay By", "Maturity Date", "Payment Deadline",
+    "Fälligkeitsdatum", "Fecha de Vencimiento", "Date d'Échéance", "Data Scadenza", "Förfallodatum",
+    "Due", "Payment Date", "Zahlungsziel", "Due On", "Final Date"
+  ],
+  "PaymentTerms": [
+    "Payment Terms", "Terms of Payment", "Terms", "Conditions", "Net Days",
+    "Zahlungsbedingungen", "Condiciones de Pago", "Conditions de Paiement", "Termini di Pagamento", "Betalningsvillkor",
+    "Due In", "Net", "Payment Condition", "Term", "Pay Terms"
+  ],
+  "PONumber": [
+    "PO Number", "Purchase Order", "Order Number", "PO #", "Customer PO",
+    "Bestellnummer", "Número de Pedido", "Numéro de Commande", "Numero Ordine", "Beställningsnummer",
+    "Purchase Order No", "Ref. PO", "Auftragsnummer", "Your PO", "PO Ref"
+  ],
+  "Address": [
+    "Address", "Street Address", "Location", "Vendor Address", "Supplier Address",
+    "Adresse", "Dirección", "Adresse", "Indirizzo", "Adress",
+    "Billing Address", "Shipping Address", "Full Address", "Anschrift", "Domicilio"
+  ],
+  "Currency": [
+    "Currency", "Curr.", "Payment Currency", "Invoice Currency", "Amount Currency",
+    "Währung", "Moneda", "Devise", "Valuta", "Valuta",
+    "CUR", "Ccy", "Price Currency", "Unit Currency", "Transaction Currency"
+  ],
+  "Discount": [
+    "Discount", "Discount Amount", "Reduction", "Price Reduction", "Savings",
+    "Rabatt", "Descuento", "Remise", "Sconto", "Rabatt",
+    "Disc.", "Deduction", "Off", "Item Discount", "Total Discount"
+  ]
+}

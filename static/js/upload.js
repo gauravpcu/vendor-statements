@@ -67,10 +67,122 @@ document.addEventListener('DOMContentLoaded', function () {
                             statusP.className = result.success ? 'success' : 'failure';
                             fileEntryDiv.appendChild(statusP);
 
+                            // Display headers if available
+                            if (result.headers && result.headers.length > 0) {
+                                const headersDiv = document.createElement('div');
+                                headersDiv.className = 'headers-display';
+                                headersDiv.textContent = 'Headers: ' + result.headers.join(', ');
+                                fileEntryDiv.appendChild(headersDiv);
+                            } else if (result.headers && result.headers.hasOwnProperty('error')) { // Check if headers itself is an error object
+                                const headersErrorDiv = document.createElement('div');
+                                headersErrorDiv.className = 'headers-error failure'; // Use failure class for styling
+                                headersErrorDiv.textContent = 'Headers Error: ' + result.headers.error; // Clarified label
+                                fileEntryDiv.appendChild(headersErrorDiv);
+                            }
+
+                            // Display field mappings if available
+                            if (result.field_mappings && result.field_mappings.length > 0) {
+                                const mappingsTable = document.createElement('table');
+                                mappingsTable.className = 'mappings-table';
+
+                                const caption = mappingsTable.createCaption();
+                                caption.textContent = 'Field Mappings';
+
+                                const thead = mappingsTable.createTHead();
+                                const headerRow = thead.insertRow();
+                                const headers = ["Original Header", "Mapped Field", "Confidence", "Method"];
+                                headers.forEach(function(headerText) {
+                                    const th = document.createElement('th');
+                                    th.textContent = headerText;
+                                    headerRow.appendChild(th);
+                                });
+
+                                const tbody = mappingsTable.createTBody();
+                                result.field_mappings.forEach(function(mapping) {
+                                    const row = tbody.insertRow();
+
+                                    const cellOriginal = row.insertCell();
+                                    cellOriginal.textContent = mapping.original_header;
+
+                                    const cellMapped = row.insertCell();
+                                    const selectElement = document.createElement('select');
+                                    selectElement.className = 'mapped-field-select';
+                                    selectElement.setAttribute('data-original-header', mapping.original_header);
+                                    // Add a unique ID if needed, e.g., using file index and mapping index
+                                    // selectElement.id = `map-select-${fileIndex}-${mappingIndex}`;
+
+                                    // Add default/unmapped option
+                                    const unmappedOption = document.createElement('option');
+                                    unmappedOption.value = "N/A"; // Or an empty string
+                                    unmappedOption.textContent = "-- Unmapped --";
+                                    selectElement.appendChild(unmappedOption);
+
+                                    // Populate with standard fields from FIELD_DEFINITIONS
+                                    if (typeof FIELD_DEFINITIONS === 'object' && FIELD_DEFINITIONS !== null) {
+                                        for (const fieldName in FIELD_DEFINITIONS) {
+                                            if (FIELD_DEFINITIONS.hasOwnProperty(fieldName)) {
+                                                const option = document.createElement('option');
+                                                option.value = fieldName;
+                                                option.textContent = fieldName;
+                                                selectElement.appendChild(option);
+                                            }
+                                        }
+                                    } else {
+                                        console.error("FIELD_DEFINITIONS is not available or not an object:", FIELD_DEFINITIONS);
+                                    }
+
+                                    // Set selected value based on backend mapping
+                                    let currentMappedField = mapping.mapped_field;
+                                    if (currentMappedField && currentMappedField.startsWith("Unknown: ")) {
+                                        currentMappedField = "N/A"; // Treat "Unknown: ..." as "N/A" for selection
+                                    }
+                                    if (currentMappedField && selectElement.querySelector(`option[value="${currentMappedField}"]`)) {
+                                        selectElement.value = currentMappedField;
+                                    } else {
+                                        selectElement.value = "N/A"; // Default to unmapped if not found or truly "N/A"
+                                    }
+
+                                    cellMapped.appendChild(selectElement);
+
+                                    if (mapping.error) { // If there was an error in mapping this specific field
+                                        const errorSpan = document.createElement('span');
+                                        errorSpan.className = 'failure-inline';
+                                        errorSpan.style.display = 'block'; // Make it appear on a new line
+                                        errorSpan.textContent = `Error: ${mapping.error}`;
+                                        cellMapped.appendChild(errorSpan);
+                                    }
+
+                                    const cellConfidence = row.insertCell();
+                                    const score = parseFloat(mapping.confidence_score);
+                                    cellConfidence.textContent = `${score.toFixed(0)}%`;
+
+                                    let confidenceClass = '';
+                                    if (score >= 90) {
+                                        confidenceClass = 'confidence-high';
+                                    } else if (score >= 80) {
+                                        confidenceClass = 'confidence-medium';
+                                    } else { // score < 80
+                                        confidenceClass = 'confidence-low';
+                                    }
+                                    cellConfidence.classList.add(confidenceClass);
+
+                                    // Add a visual cue to the row if confidence is low or there's an error
+                                    if (score < 80 || mapping.error) {
+                                        row.classList.add('row-needs-review');
+                                    }
+
+                                    const cellMethod = row.insertCell();
+                                    cellMethod.textContent = mapping.method || 'N/A';
+
+                                });
+                                fileEntryDiv.appendChild(mappingsTable);
+                            }
+
+
                             // Add dropdown for manual type selection
                             // Show dropdown if upload was technically successful but type is unknown/unsupported, or if user just wants to change it.
                             // Also show if there was an error in detection, allowing user to specify.
-                            if (result.success || result.file_type === "unknown" || result.file_type.startsWith("error_") || (result.file_type && !supportedTypes.includes(result.file_type.toUpperCase())) ) {
+                            if (result.success || result.file_type === "unknown" || (result.file_type && result.file_type.startsWith("error_")) || (result.file_type && !supportedTypes.includes(result.file_type.toUpperCase())) ) {
                                 const selectLabel = document.createElement('label');
                                 selectLabel.textContent = ' Override Type: ';
                                 selectLabel.htmlFor = `type-select-${index}`; // Use index for unique ID

@@ -2,21 +2,74 @@ from flask import Flask, render_template, request, jsonify
 import os
 import magic
 import logging
+import json # For loading field definitions
+from file_parser import extract_headers
+from azure_openai_client import test_azure_openai_connection, azure_openai_configured
+from header_mapper import generate_mappings # Import the new mapping function
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB limit
 
+# --- Field Definitions ---
+FIELD_DEFINITIONS = {}
+
+def load_field_definitions():
+    global FIELD_DEFINITIONS
+    try:
+        with open('field_definitions.json', 'r', encoding='utf-8') as f:
+            FIELD_DEFINITIONS = json.load(f)
+        # Optionally, log success or print for verification during startup
+        # print("Field definitions loaded successfully.")
+        # logger.info("Field definitions loaded successfully.") # If logger is configured before this call
+    except FileNotFoundError:
+        # print("Error: field_definitions.json not found. Using empty definitions.", file=sys.stderr)
+        logging.error("CRITICAL: field_definitions.json not found. Field mapping will not work.")
+        FIELD_DEFINITIONS = {} # Ensure it's empty if file not found
+    except json.JSONDecodeError:
+        # print("Error: field_definitions.json is not valid JSON. Using empty definitions.", file=sys.stderr)
+        logging.error("CRITICAL: field_definitions.json is not valid JSON. Field mapping will not work.")
+        FIELD_DEFINITIONS = {} # Ensure it's empty if JSON is invalid
+    except Exception as e:
+        logging.error(f"CRITICAL: An unexpected error occurred loading field_definitions.json: {e}")
+        FIELD_DEFINITIONS = {}
+
+
 # --- Logger Setup ---
 logger = logging.getLogger('upload_history')
 logger.setLevel(logging.INFO)
-# Prevent duplicate handlers if app reloads (common in debug mode)
-if not logger.handlers:
+file_handler_configured = False
+if logger.handlers: # Check if handlers already exist from a previous context (e.g. module reload)
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler) and handler.baseFilename.endswith('upload_history.log'):
+            file_handler_configured = True
+            break
+
+if not file_handler_configured:
     fh = logging.FileHandler('upload_history.log')
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 # --- End Logger Setup ---
+
+load_field_definitions() # Load definitions *after* logger setup
+
+# --- Test Azure OpenAI Connection (Optional) ---
+# This is done after logger and other configs are set up.
+# The application should not crash if this fails.
+try:
+    logger.info("Attempting to test Azure OpenAI connection...")
+    test_result = test_azure_openai_connection()
+    logger.info(f"Azure OpenAI Connection Test Result: {test_result}")
+    if not test_result.get("success"):
+        logger.warning(f"Azure OpenAI connection test failed: {test_result.get('message')} - Details: {test_result.get('details')}")
+    # The azure_openai_configured variable from azure_openai_client.py can also be checked here if needed
+    if not azure_openai_configured:
+        logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
+except Exception as e:
+    logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+# --- End Azure OpenAI Connection Test ---
+
 
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',
@@ -27,7 +80,8 @@ SUPPORTED_MIME_TYPES = {
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Pass FIELD_DEFINITIONS to the template, ensuring it's JSON-serializable
+    return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -99,12 +153,40 @@ def upload_files():
                     message = f"Error during file type detection: {str(e_detect)}"
                     file_type = "error_detection_general"
 
-                results.append({
+                results_entry = {
                     "filename": filename,
                     "success": success,
                     "message": message,
-                    "file_type": file_type
-                })
+                    "file_type": file_type,
+                    "headers": [], # Initialize headers field
+                    "field_mappings": [] # Initialize field_mappings
+                }
+
+                if success and file_type in ["CSV", "XLSX", "XLS"]:
+                    headers_extraction_result = extract_headers(file_path, file_type) # Renamed for clarity
+                    if isinstance(headers_extraction_result, list):
+                        results_entry["headers"] = headers_extraction_result
+                        if headers_extraction_result: # If headers were actually extracted
+                            # Generate field mappings
+                            mappings = generate_mappings(headers_extraction_result, FIELD_DEFINITIONS)
+                            results_entry["field_mappings"] = mappings
+                            # Optionally, log mapping generation success/details
+                            logger.info(f"Generated {len(mappings)} field mappings for {filename}.")
+                        # else: message remains "Upload successful", headers list is empty
+                    elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result:
+                        results_entry["success"] = False # Header extraction failed
+                        results_entry["message"] = headers_extraction_result["error"]
+                    elif isinstance(headers_extraction_result, dict) and "info" in headers_extraction_result:
+                        results_entry["message"] += f" ({headers_extraction_result['info']})"
+
+                # If file type is PDF, and was successful so far (type detection)
+                elif success and file_type == "PDF":
+                    pdf_header_info = extract_headers(file_path, file_type) # This returns an info message
+                    if isinstance(pdf_header_info, dict) and "info" in pdf_header_info:
+                         results_entry["message"] += f" ({pdf_header_info['info']})"
+
+
+                results.append(results_entry)
 
             except Exception as e_save: # Errors during file.save()
                 results.append({
@@ -114,12 +196,18 @@ def upload_files():
                     "file_type": "error_saving"
                 })
 
-            # Log the result for this file
+            # Log the result for this file (using the state from results_entry)
+            final_status = results_entry['success']
+            final_message = results_entry['message']
+            final_file_type = results_entry['file_type'] # This should be the originally detected type
+
             log_message = (
                 f"File: {filename}, "
-                f"Status: {'Success' if success else 'Failure'}, "
-                f"Type: {file_type}, "
-                f"Message: {message}"
+                f"Status: {'Success' if final_status else 'Failure'}, "
+                f"Type: {final_file_type}, "
+                f"Message: {final_message}, "
+                f"Headers Count: {len(results_entry.get('headers', []))}, "
+                f"Mappings Count: {len(results_entry.get('field_mappings', []))}"
             )
             logger.info(log_message)
 

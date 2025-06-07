@@ -32,3 +32,103 @@
 .failure {
     color: red;
 }
+
+.file-entry {
+    margin-bottom: 10px;
+    padding: 5px;
+    border: 1px solid #eee;
+}
+
+.headers-display {
+    font-size: 0.9em;
+    color: #333;
+    margin-top: 5px;
+    padding-left: 10px;
+    word-break: break-all; /* To prevent long header strings from breaking layout */
+}
+
+.headers-error {
+    font-size: 0.9em;
+    margin-top: 5px;
+    padding-left: 10px;
+    /* .failure class will color it red */
+}
+
+.mappings-container {
+    margin-top: 10px;
+    padding-left: 15px;
+    border-top: 1px dashed #ddd; /* Separator from header/type info */
+}
+
+.mappings-container h4 { /* This class is no longer used, can be removed if desired */
+    margin-bottom: 5px;
+    font-size: 0.95em;
+}
+
+.mapping-entry { /* This class is no longer used, can be removed if desired */
+    font-size: 0.85em;
+    color: #555;
+    margin: 2px 0;
+}
+
+.mapping-entry strong { /* This class is no longer used, can be removed if desired */
+    color: #000;
+}
+
+/* Table Styling for Mappings */
+.mappings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.9em;
+}
+
+.mappings-table caption {
+    font-size: 1.1em;
+    font-weight: bold;
+    text-align: left;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.mappings-table th, .mappings-table td {
+    border: 1px solid #ddd;
+    padding: 6px;
+    text-align: left;
+    vertical-align: top; /* In case of multi-line content like error messages */
+}
+
+.mappings-table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+/* Confidence Score Styling */
+.confidence-high {
+    background-color: #d4edda; /* Light green */
+    color: #155724; /* Dark green text */
+}
+
+.confidence-medium {
+    background-color: #fff3cd; /* Light yellow */
+    color: #856404; /* Dark yellow text */
+}
+
+.confidence-low {
+    background-color: #f8d7da; /* Light red */
+    color: #721c24; /* Dark red text */
+}
+
+.row-needs-review {
+    border-left: 3px solid #dc3545; /* Red border on the left to flag the row */
+}
+.row-needs-review td {
+    /* Optionally, slightly different background for reviewed rows if not using cell-specific confidence colors */
+    /* background-color: #fef0f1; */
+}
+
+
+.failure-inline { /* For error messages within a cell */
+    color: #721c24; /* Dark red text, same as .failure but can be used inline */
+    font-size: 0.9em;
+}

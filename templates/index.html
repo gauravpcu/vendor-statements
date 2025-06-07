@@ -23,6 +23,10 @@
         <!-- Individual file statuses, including detected type and dropdown for manual selection, will be displayed here by JavaScript -->
     </div>
 
+    <script>
+        const FIELD_DEFINITIONS = {{ field_definitions_json | safe }};
+        // console.log("Field Definitions Loaded in JS:", FIELD_DEFINITIONS); // For debugging
+    </script>
     <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
 </body>
 </html>

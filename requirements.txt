@@ -1,2 +1,6 @@
 Flask
 python-magic
+pandas
+openpyxl
+xlrd
+openai
