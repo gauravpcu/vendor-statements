@@ -5,3 +5,6 @@ openpyxl
 xlrd
 openai
 python-dotenv
+pdfplumber
+pytesseract
+pdf2image

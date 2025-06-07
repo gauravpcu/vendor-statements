@@ -4,7 +4,7 @@ import magic
 import logging
 import json
 import datetime # For timestamping templates
-from file_parser import extract_headers, extract_data
+from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables # Ensure this is imported
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from header_mapper import generate_mappings
 from chatbot_service import get_mapping_suggestions
@@ -105,7 +105,10 @@ def upload_files():
     for file_storage in files:
         if file_storage and file_storage.filename:
             filename = file_storage.filename
-            results_entry = {"filename": filename, "success": False, "message": "File processing started.", "file_type": "unknown", "headers": [], "field_mappings": []}
+            results_entry = {
+                "filename": filename, "success": False, "message": "File processing started.",
+                "file_type": "unknown", "headers": [], "field_mappings": []
+            }
             try:
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file_storage.save(file_path)
@@ -116,7 +119,7 @@ def upload_files():
                     if detected_type_name:
                         results_entry["file_type"] = detected_type_name
                         results_entry["success"] = True
-                        results_entry["message"] = "Upload successful."
+                        results_entry["message"] = "Upload and type detection successful."
                         uploaded_file_count += 1
                     else:
                         results_entry["message"] = f"Unsupported file type: {mime_type}."
@@ -131,40 +134,37 @@ def upload_files():
                     results_entry["file_type"] = "error_detection_general"
                     results_entry["success"] = False
 
-                if results_entry["success"] and results_entry["file_type"] in ["CSV", "XLSX", "XLS"]:
+                if results_entry["success"] and results_entry["file_type"] in ["CSV", "XLSX", "XLS", "PDF"]:
                     headers_extraction_result = extract_headers(file_path, results_entry["file_type"])
+
                     if isinstance(headers_extraction_result, list):
                         results_entry["headers"] = headers_extraction_result
                         if headers_extraction_result:
                             mappings = generate_mappings(headers_extraction_result, FIELD_DEFINITIONS)
                             results_entry["field_mappings"] = mappings
-                            logger.info(f"Generated {len(mappings)} field mappings for {filename}.")
+                            logger.info(f"Generated {len(mappings)} field mappings for {filename} (Type: {results_entry['file_type']}).")
+                            results_entry["message"] = "Headers extracted and auto-mapped."
                         else:
-                            results_entry["message"] += " (No headers found in file)"
+                            results_entry["message"] += " No headers were found/extracted."
                     elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result:
                         results_entry["success"] = False
                         results_entry["message"] = headers_extraction_result["error"]
-                elif results_entry["success"] and results_entry["file_type"] == "PDF":
-                    pdf_header_info = extract_headers(file_path, results_entry["file_type"])
-                    if isinstance(pdf_header_info, dict) and "info" in pdf_header_info:
-                         results_entry["message"] += f" ({pdf_header_info['info']})"
 
                 results.append(results_entry)
 
             except Exception as e_save:
-                results.append({"filename": filename, "success": False, "message": f"Error saving file: {str(e_save)}", "file_type": "error_saving", "headers": [], "field_mappings": []})
+                results_entry = {"filename": filename, "success": False, "message": f"Error saving or processing file: {str(e_save)}", "file_type": "error_system", "headers": [], "field_mappings": []}
+                results.append(results_entry)
 
-            log_message = (f"File: {filename}, Status: {'Success' if results_entry['success'] else 'Failure'}, Type: {results_entry['file_type']}, "
-                           f"Message: {results_entry['message']}, Headers: {len(results_entry['headers'])}, Mappings: {len(results_entry['field_mappings'])}")
+            log_message = (f"File: {filename}, Status: {'Success' if results_entry.get('success') else 'Failure'}, Type: {results_entry.get('file_type', 'unknown')}, "
+                           f"Message: {results_entry.get('message')}, Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}")
             logger.info(log_message)
-
-    if uploaded_file_count == 0 and len(results) > 0:
-        pass
 
     return jsonify(results)
 
 @app.route('/chatbot_suggest_mapping', methods=['POST'])
 def chatbot_suggest_mapping_route():
+    # ... (implementation as before)
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided"}), 400
     original_header = data.get('original_header')
@@ -178,6 +178,7 @@ def chatbot_suggest_mapping_route():
         logger.error(f"Chatbot suggestion error: {e}", exc_info=True)
         return jsonify({"error": "Internal error generating suggestions."}), 500
 
+
 @app.route('/process_file_data', methods=['POST'])
 def process_file_data_route():
     data = request.get_json()
@@ -186,26 +187,53 @@ def process_file_data_route():
     finalized_mappings = data.get('finalized_mappings')
     file_type = data.get('file_type')
     if not all([file_identifier, finalized_mappings, file_type]):
-        return jsonify({"error": "Missing required fields"}), 400
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
-    if not os.path.exists(file_path):
+        return jsonify({"error": "Missing required fields (file_identifier, finalized_mappings, file_type)"}), 400
+
+    file_path_on_disk = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
+    if not os.path.exists(file_path_on_disk):
         if not os.path.exists(file_identifier):
             logger.error(f"File not found: {file_identifier}")
             return jsonify({"error": f"File not found: {file_identifier}"}), 404
-        file_path = file_identifier
-    logger.info(f"Processing data for: {file_path}, type: {file_type}")
+        file_path_on_disk = file_identifier
+
+    logger.info(f"Processing data for: {file_path_on_disk}, type: {file_type}")
     try:
-        extracted_data = extract_data(file_path, file_type, finalized_mappings)
-        if isinstance(extracted_data, dict) and "error" in extracted_data:
-            logger.error(f"Data extraction error for {file_path}: {extracted_data['error']}")
-            return jsonify(extracted_data), 400
-        return jsonify({'data': extracted_data, 'message': f'Processed {len(extracted_data)} records.' if isinstance(extracted_data, list) else 'Data processed.'})
+        pdf_data_rows_for_extraction = None
+        pdf_original_headers_for_extraction = None
+
+        if file_type == "PDF":
+            pdf_context = extract_headers_from_pdf_tables(file_path_on_disk)
+            if isinstance(pdf_context, dict) and "error" in pdf_context:
+                logger.error(f"PDF header/table context error for {file_path_on_disk}: {pdf_context['error']}")
+                return jsonify({"error": f"Could not retrieve table structure from PDF: {pdf_context['error']}"}), 400
+
+            pdf_data_rows_for_extraction = pdf_context.get('data_rows')
+            pdf_original_headers_for_extraction = pdf_context.get('headers')
+
+            if pdf_data_rows_for_extraction is None or pdf_original_headers_for_extraction is None:
+                logger.error(f"PDF context missing data_rows or headers for {file_path_on_disk}.")
+                return jsonify({"error": "Failed to get consistent table data from PDF for extraction."}), 500
+
+        extracted_data_list_or_error = extract_data(
+            file_path_on_disk,
+            file_type,
+            finalized_mappings,
+            pdf_data_rows=pdf_data_rows_for_extraction,
+            pdf_original_headers=pdf_original_headers_for_extraction
+        )
+
+        if isinstance(extracted_data_list_or_error, dict) and "error" in extracted_data_list_or_error:
+            logger.error(f"Data extraction error for {file_path_on_disk}: {extracted_data_list_or_error['error']}")
+            return jsonify(extracted_data_list_or_error), 400
+
+        return jsonify({'data': extracted_data_list_or_error, 'message': f'Successfully processed {len(extracted_data_list_or_error)} records.' if isinstance(extracted_data_list_or_error, list) else 'Processed data.'})
     except Exception as e:
-        logger.error(f"File processing error for {file_path}: {e}", exc_info=True)
+        logger.error(f"File processing error for {file_path_on_disk}: {e}", exc_info=True)
         return jsonify({"error": "Internal error processing file."}), 500
 
 @app.route('/view_uploaded_file/<path:filename>')
 def view_uploaded_file(filename):
+    # ... (implementation as before)
     try:
         upload_folder_abs = os.path.abspath(app.config['UPLOAD_FOLDER'])
         logger.info(f"Serving file: {filename} from {upload_folder_abs}")
@@ -217,8 +245,10 @@ def view_uploaded_file(filename):
         logger.error(f"Error serving file {filename}: {e}", exc_info=True)
         return "Error serving file.", 500
 
+
 @app.route('/save_template', methods=['POST'])
 def save_template_route():
+    # ... (implementation as before)
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided"}), 400
     original_template_name = data.get('template_name', '').strip()
@@ -244,8 +274,10 @@ def save_template_route():
         logger.error(f"Error saving template '{filename}': {e}", exc_info=True)
         return jsonify({"error": "Server error saving template."}), 500
 
+
 @app.route('/list_templates', methods=['GET'])
 def list_templates_route():
+    # ... (implementation as before)
     templates_info = []
     if not os.path.exists(TEMPLATES_DIR):
         logger.warning(f"Templates dir '{TEMPLATES_DIR}' not found.")
@@ -271,8 +303,10 @@ def list_templates_route():
         logger.error(f"Error listing templates from '{TEMPLATES_DIR}': {e_list}", exc_info=True)
         return jsonify({'templates': [], 'error': 'Could not retrieve templates.'}), 500
 
+
 @app.route('/get_template/<path:template_file_id>', methods=['GET'])
 def get_template_route(template_file_id):
+    # ... (implementation as before)
     template_file_id = os.path.basename(template_file_id)
     if not template_file_id.endswith(".json"):
         logger.warning(f"Attempt to access non-JSON as template: {template_file_id}")
@@ -291,6 +325,7 @@ def get_template_route(template_file_id):
 
 @app.route('/apply_learned_preferences', methods=['POST'])
 def apply_learned_preferences_route():
+    # ... (implementation as before)
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -354,33 +389,33 @@ def get_learned_preferences_route(vendor_name):
     sanitized_vendor_name = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_vendor_name)
     if not sanitized_vendor_name:
         logger.warning(f"Vendor name '{original_vendor_name}' sanitized to an empty string.")
-        return jsonify({'vendor_name': original_vendor_name, 'preferences': [], 'message': 'Invalid vendor name resulting in empty filename.'}), 200 # Return 200 with empty, as client might expect this
+        return jsonify({'vendor_name': original_vendor_name, 'preferences': [], 'message': 'Invalid vendor name.'}), 200
 
     vendor_filename = f"{sanitized_vendor_name}.json"
     preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
 
     if not os.path.exists(preference_file_path):
-        logger.info(f"No preference file found for vendor: '{original_vendor_name}' (expected at: {preference_file_path}).")
+        logger.info(f"No preference file for vendor: '{original_vendor_name}' at: {preference_file_path}.")
         return jsonify({'vendor_name': original_vendor_name, 'preferences': []})
 
     try:
         with open(preference_file_path, 'r', encoding='utf-8') as f:
             preferences_list = json.load(f)
             if not isinstance(preferences_list, list):
-                logger.error(f"Preference file for '{original_vendor_name}' ({preference_file_path}) is corrupted (not a list).")
-                return jsonify({"error": f"Corrupted preference data for vendor '{original_vendor_name}'."}), 500
+                logger.error(f"Preference file for '{original_vendor_name}' ({preference_file_path}) corrupted.")
+                return jsonify({"error": f"Corrupted data for vendor '{original_vendor_name}'."}), 500
 
-        logger.info(f"Successfully retrieved {len(preferences_list)} preferences for vendor: '{original_vendor_name}'.")
+        logger.info(f"Retrieved {len(preferences_list)} preferences for vendor: '{original_vendor_name}'.")
         return jsonify({'vendor_name': original_vendor_name, 'preferences': preferences_list})
     except json.JSONDecodeError:
-        logger.error(f"Error decoding JSON from preference file for '{original_vendor_name}' ({preference_file_path}).", exc_info=True)
-        return jsonify({"error": f"Corrupted preference file for vendor '{original_vendor_name}'."}), 500
+        logger.error(f"JSON decode error for '{original_vendor_name}' ({preference_file_path}).", exc_info=True)
+        return jsonify({"error": f"Corrupted preference file for '{original_vendor_name}'."}), 500
     except IOError as e:
-        logger.error(f"IOError reading preference file for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
-        return jsonify({"error": f"Could not read preferences for vendor '{original_vendor_name}'."}), 500
+        logger.error(f"IOError for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
+        return jsonify({"error": f"Could not read preferences for '{original_vendor_name}'."}), 500
     except Exception as e:
-        logger.error(f"Unexpected error retrieving preferences for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
-        return jsonify({"error": "An unexpected server error occurred while retrieving preferences."}), 500
+        logger.error(f"Unexpected error for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
+        return jsonify({"error": "Unexpected server error retrieving preferences."}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
