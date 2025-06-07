@@ -23,10 +23,27 @@
         <!-- Individual file statuses, including detected type and dropdown for manual selection, will be displayed here by JavaScript -->
     </div>
 
+    <!-- Chatbot Panel -->
+    <div id="chatbotPanel">
+        <div id="chatbotHeader">
+            <span>Chatbot Assistant</span>
+            <button id="toggleChatbotButton">&ndash;</button> <!-- Using &ndash; for a better looking dash -->
+        </div>
+        <div id="chatbotMessages">
+            <!-- Messages will appear here -->
+            <div class="bot-message">Welcome! How can I assist with your header mappings?</div>
+        </div>
+        <div id="chatbotInputContainer">
+            <input type="text" id="chatbotInput" placeholder="Type your message..." disabled> <!-- Initially disabled -->
+            <button id="chatbotSendButton" disabled>Send</button> <!-- Initially disabled -->
+        </div>
+    </div>
+
     <script>
+        // This ensures FIELD_DEFINITIONS is defined before other scripts that might use it.
         const FIELD_DEFINITIONS = {{ field_definitions_json | safe }};
-        // console.log("Field Definitions Loaded in JS:", FIELD_DEFINITIONS); // For debugging
     </script>
     <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chatbot.js') }}"></script>
 </body>
 </html>

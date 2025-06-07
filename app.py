@@ -5,7 +5,8 @@ import logging
 import json # For loading field definitions
 from file_parser import extract_headers
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
-from header_mapper import generate_mappings # Import the new mapping function
+from header_mapper import generate_mappings
+from chatbot_service import get_mapping_suggestions # Import the chatbot service
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -233,6 +234,29 @@ def upload_files():
 
 
     return jsonify(results)
+
+@app.route('/chatbot_suggest_mapping', methods=['POST'])
+def chatbot_suggest_mapping_route():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    original_header = data.get('original_header')
+    current_mapped_field = data.get('current_mapped_field')
+
+    if not original_header:
+        return jsonify({"error": "Missing 'original_header' in request"}), 400
+    # current_mapped_field can be N/A or missing, which is fine
+
+    logger.info(f"Received chatbot suggestion request for header: '{original_header}', current map: '{current_mapped_field}'")
+
+    try:
+        suggestions = get_mapping_suggestions(original_header, current_mapped_field, FIELD_DEFINITIONS)
+        return jsonify(suggestions)
+    except Exception as e:
+        logger.error(f"Error in /chatbot_suggest_mapping route for header '{original_header}': {e}", exc_info=True)
+        return jsonify({"error": "An internal error occurred while generating suggestions."}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

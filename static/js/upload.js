@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 });
 
                                 const tbody = mappingsTable.createTBody();
-                                result.field_mappings.forEach(function(mapping) {
+                                result.field_mappings.forEach(function(mapping, mappingIndex) { // Added mappingIndex
                                     const row = tbody.insertRow();
 
                                     const cellOriginal = row.insertCell();
@@ -108,8 +108,8 @@ document.addEventListener('DOMContentLoaded', function () {
                                     const selectElement = document.createElement('select');
                                     selectElement.className = 'mapped-field-select';
                                     selectElement.setAttribute('data-original-header', mapping.original_header);
-                                    // Add a unique ID if needed, e.g., using file index and mapping index
-                                    // selectElement.id = `map-select-${fileIndex}-${mappingIndex}`;
+                                    // Unique ID for the select element, useful for later direct manipulation if needed
+                                    selectElement.id = `map-select-${fileIndex}-${mappingIndex}`;
 
                                     // Add default/unmapped option
                                     const unmappedOption = document.createElement('option');
@@ -144,6 +144,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
                                     cellMapped.appendChild(selectElement);
 
+                                    // Add info icon for tooltip
+                                    const infoIcon = document.createElement('span');
+                                    infoIcon.className = 'field-tooltip-trigger';
+                                    infoIcon.innerHTML = '&#9432;'; // Circled 'i' character
+                                    infoIcon.setAttribute('data-field-name', selectElement.value); // Set initial field name
+                                    cellMapped.appendChild(infoIcon);
+
+                                    // Update icon's data-field-name when dropdown changes
+                                    selectElement.addEventListener('change', function() {
+                                        infoIcon.setAttribute('data-field-name', this.value);
+                                        // Also update the help button's current mapped field if it exists
+                                        const helpButton = row.querySelector('.chatbot-help-button');
+                                        if (helpButton) {
+                                            helpButton.setAttribute('data-current-mapped-field', this.value);
+                                        }
+                                    });
+
+
                                     if (mapping.error) { // If there was an error in mapping this specific field
                                         const errorSpan = document.createElement('span');
                                         errorSpan.className = 'failure-inline';
@@ -174,8 +192,173 @@ document.addEventListener('DOMContentLoaded', function () {
                                     const cellMethod = row.insertCell();
                                     cellMethod.textContent = mapping.method || 'N/A';
 
+                                    // Add Chatbot Help button cell
+                                    const cellChatHelp = row.insertCell();
+                                    const chatHelpButton = document.createElement('button');
+                                    chatHelpButton.className = 'chatbot-help-button';
+                                    chatHelpButton.textContent = 'Suggest';
+                                    chatHelpButton.setAttribute('data-original-header', mapping.original_header);
+                                    chatHelpButton.setAttribute('data-current-mapped-field', selectElement.value); // Get current selection
+
+                                    // Update data attribute when selection changes
+                                    selectElement.addEventListener('change', function() {
+                                        chatHelpButton.setAttribute('data-current-mapped-field', this.value);
+                                    });
+
+                                    cellChatHelp.appendChild(chatHelpButton);
                                 });
                                 fileEntryDiv.appendChild(mappingsTable);
+
+                                let currentChatbotOriginalHeader = null; // Variable to store context
+
+                                // Add event listener for all chatbot help buttons within this table
+                                fileEntryDiv.querySelectorAll('.chatbot-help-button').forEach(button => {
+                                    button.addEventListener('click', function() {
+                                        const originalHeader = this.getAttribute('data-original-header');
+                                        const currentMappedField = this.getAttribute('data-current-mapped-field');
+                                        currentChatbotOriginalHeader = originalHeader; // Store context
+
+                                        // Ensure chatbot is visible
+                                        const chatbotPanel = document.getElementById('chatbotPanel'); // Ensure we have the panel
+                                        if (typeof window.toggleChatbot === 'function' && chatbotPanel && chatbotPanel.classList.contains('hidden')) {
+                                            window.toggleChatbot();
+                                        }
+
+                                        if (typeof window.addBotMessage === 'function') {
+                                            window.addBotMessage(`Looking for suggestions for header: "${originalHeader}" (currently mapped to: "${currentMappedField}")...`);
+
+                                            fetch('/chatbot_suggest_mapping', {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                },
+                                                body: JSON.stringify({
+                                                    original_header: originalHeader,
+                                                    current_mapped_field: currentMappedField
+                                                }),
+                                            })
+                                            .then(response => {
+                                                if (!response.ok) {
+                                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                                }
+                                                return response.json();
+                                            })
+                                            .then(suggestions => {
+                                                if (suggestions && suggestions.length > 0 && suggestions[0].suggested_field !== 'N/A') {
+                                                    const suggestionsHtmlContainer = document.createElement('div');
+                                                    suggestionsHtmlContainer.className = 'suggestions-list'; // For overall list styling
+
+                                                    suggestions.forEach(suggestion => {
+                                                        const suggestionDiv = document.createElement('div');
+                                                        suggestionDiv.className = 'chatbot-suggestion';
+                                                        suggestionDiv.setAttribute('data-suggested-field', suggestion.suggested_field);
+
+                                                        const fieldSpan = document.createElement('span');
+                                                        fieldSpan.className = 'suggestion-field';
+                                                        fieldSpan.textContent = suggestion.suggested_field;
+
+                                                        const reasonSpan = document.createElement('span');
+                                                        reasonSpan.className = 'suggestion-reason';
+                                                        reasonSpan.textContent = suggestion.reason || 'No specific reason provided.';
+
+                                                        suggestionDiv.appendChild(fieldSpan);
+                                                        suggestionDiv.appendChild(reasonSpan);
+                                                        suggestionsHtmlContainer.appendChild(suggestionDiv);
+                                                    });
+                                                    window.addBotMessage(suggestionsHtmlContainer);
+                                                } else if (suggestions && suggestions.length > 0 && suggestions[0].suggested_field === 'N/A') {
+                                                    window.addBotMessage(suggestions[0].reason || "I couldn't find any alternative suggestions for this header.");
+                                                } else {
+                                                    window.addBotMessage("I couldn't find any alternative suggestions for this header.");
+                                                }
+                                            })
+                                            .catch(error => {
+                                                console.error('Error fetching suggestions:', error);
+                                                window.addBotMessage(`Sorry, I encountered an error trying to get suggestions: ${error.message}`);
+                                            });
+
+                                        } else {
+                                            console.error("addBotMessage function not found.");
+                                        }
+                                        // Enable chatbot input
+                                        const chatbotInput = document.getElementById('chatbotInput');
+                                        const chatbotSendButton = document.getElementById('chatbotSendButton');
+                                        if(chatbotInput) chatbotInput.disabled = false;
+                                        if(chatbotSendButton) chatbotSendButton.disabled = false;
+                                    });
+                                });
+
+                                // Event listener for clicking on a suggestion (delegated to fileEntryDiv)
+                                // This needs to be set up once per fileEntryDiv if suggestions are dynamically added.
+                                // Or, more robustly, on a static parent like chatbotMessagesDiv in chatbot.js
+                                // For now, let's attach it to chatbotMessagesDiv in chatbot.js as it's more central.
+                                // The currentChatbotOriginalHeader will be used by that listener.
+                            }
+
+                            // Tooltip logic (can be part of this file or a separate utility)
+                            // Create a single tooltip element, reuse it
+                            let tooltipElement = document.getElementById('field-description-tooltip');
+                            if (!tooltipElement) {
+                                tooltipElement = document.createElement('div');
+                                tooltipElement.id = 'field-description-tooltip';
+                                tooltipElement.className = 'tooltip-hidden'; // Initially hidden
+                                document.body.appendChild(tooltipElement); // Append to body to avoid z-index issues
+                            }
+
+                            fileEntryDiv.querySelectorAll('.field-tooltip-trigger').forEach(icon => {
+                                icon.addEventListener('mouseover', function(event) {
+                                    const fieldName = this.getAttribute('data-field-name');
+                                    let tooltipContent = 'No information available.'; // Default content
+
+                                    if (fieldName && fieldName !== "N/A" && FIELD_DEFINITIONS[fieldName]) {
+                                        const definition = FIELD_DEFINITIONS[fieldName];
+                                        const description = definition.description || 'No description provided.';
+                                        const expectedType = definition.expected_type || 'Not specified.';
+                                        tooltipContent = `Description: ${description}\nExpected Type: ${expectedType}`;
+
+                                        tooltipElement.className = 'tooltip-visible';
+                                        const rect = this.getBoundingClientRect();
+                                        tooltipElement.style.left = (rect.left + window.scrollX + rect.width / 2) + 'px';
+                                        tooltipElement.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+                                        tooltipElement.style.transform = 'translateX(-50%)';
+                                    } else if (fieldName === "N/A") {
+                                        tooltipContent = 'This header is currently unmapped.';
+                                        tooltipElement.className = 'tooltip-visible'; // Still show tooltip for "N/A"
+                                        const rect = this.getBoundingClientRect();
+                                        tooltipElement.style.left = (rect.left + window.scrollX + rect.width / 2) + 'px';
+                                        tooltipElement.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+                                        tooltipElement.style.transform = 'translateX(-50%)';
+                                    } else {
+                                        // fieldName is something else unexpected, or FIELD_DEFINITIONS[fieldName] is missing
+                                        tooltipElement.className = 'tooltip-hidden'; // Hide if no relevant info
+                                        return; // Early exit if no valid fieldName to show tooltip for
+                                    }
+                                    tooltipElement.innerText = tooltipContent; // Use innerText to preserve line breaks
+                                });
+                                icon.addEventListener('mouseout', function() {
+                                    tooltipElement.className = 'tooltip-hidden'; // Hide it
+                                    tooltipElement.style.transform = ''; // Reset transform
+                                });
+                                icon.addEventListener('click', function() {
+                                    // Optional: toggle tooltip on click for mobile friendliness
+                                    if (tooltipElement.classList.contains('tooltip-visible')) {
+                                        tooltipElement.className = 'tooltip-hidden';
+                                        tooltipElement.style.transform = '';
+                                    } else {
+                                        // Manually trigger the mouseover logic for content and positioning
+                                        const mouseoverEvent = new MouseEvent('mouseover');
+                                        this.dispatchEvent(mouseoverEvent);
+                                    }
+                                });
+                            });
+
+                            // Expose currentChatbotOriginalHeader for chatbot.js to use
+                            // This is a bit of a hack; a more robust solution might involve custom events or a shared state module.
+                            window.getCurrentChatbotOriginalHeader = function() {
+                                return currentChatbotOriginalHeader;
+                            };
+                            window.clearCurrentChatbotOriginalHeader = function() {
+                                currentChatbotOriginalHeader = null;
                             }
 
 

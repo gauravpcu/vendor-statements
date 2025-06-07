@@ -132,3 +132,210 @@
     color: #721c24; /* Dark red text, same as .failure but can be used inline */
     font-size: 0.9em;
 }
+
+/* Chatbot Styling */
+#chatbotPanel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    max-height: 500px; /* Max height before internal scrolling */
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    z-index: 1000; /* Ensure it's above other content */
+}
+
+#chatbotPanel.hidden {
+    /* transform: translateY(calc(100% - 40px)); /* Hide most of it, leave header? */
+    /* Or simply: */
+    display: none;
+}
+
+
+#chatbotHeader {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    cursor: grab; /* For potential dragging later */
+}
+
+#toggleChatbotButton {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+}
+
+#chatbotMessages {
+    flex-grow: 1;
+    padding: 10px;
+    overflow-y: auto;
+    background-color: #fff;
+    min-height: 200px; /* Minimum height for message area */
+    border-bottom: 1px solid #eee;
+}
+
+.bot-message, .user-message {
+    padding: 8px 12px;
+    border-radius: 18px;
+    margin-bottom: 8px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.bot-message {
+    background-color: #e9ecef;
+    color: #333;
+    align-self: flex-start; /* Default, but good to be explicit */
+    margin-right: auto; /* Push to left */
+}
+
+.user-message {
+    background-color: #007bff;
+    color: white;
+    align-self: flex-end; /* Default for parent flex container */
+    margin-left: auto; /* Push to right */
+}
+
+#chatbotInputContainer {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #eee;
+    background-color: #f9f9f9; /* Match panel background */
+}
+
+#chatbotInput {
+    flex-grow: 1;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-right: 8px;
+}
+
+#chatbotInput:disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
+
+
+#chatbotSendButton {
+    padding: 8px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#chatbotSendButton:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+#chatbotSendButton:disabled {
+    background-color: #a0cfff; /* Lighter blue when disabled */
+    cursor: not-allowed;
+}
+
+/* Chatbot Suggestion Styling */
+.bot-message .suggestions-list { /* Target suggestions specifically within a bot message */
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Spacing between suggestion items */
+    padding-top: 5px; /* Some space from the introductory bot text */
+}
+
+.chatbot-suggestion {
+    background-color: #f0f0f0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    cursor: pointer; /* Indicate it's clickable */
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.chatbot-suggestion:hover {
+    background-color: #e9e9e9;
+    border-color: #ccc;
+}
+
+.suggestion-field {
+    display: block; /* Make field and reason stack vertically */
+    font-weight: bold;
+    color: #0056b3; /* Similar to chatbot send button for consistency */
+    margin-bottom: 3px;
+}
+
+.suggestion-reason {
+    display: block;
+    font-size: 0.85em;
+    color: #555;
+}
+
+/* Chatbot Help Button in Table */
+.chatbot-help-button {
+    padding: 4px 8px;
+    font-size: 0.85em;
+    color: #fff;
+    background-color: #17a2b8; /* Info color / Teal */
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.chatbot-help-button:hover {
+    background-color: #138496; /* Darker teal */
+}
+
+.mappings-table td, .mappings-table th { /* Ensure consistent padding for all cells */
+    padding: 6px 8px; /* Adjusted padding slightly */
+}
+
+/* Field Tooltip Styling */
+.field-tooltip-trigger {
+    cursor: help; /* Indicate it provides help */
+    margin-left: 5px;
+    font-size: 0.9em;
+    color: #007bff; /* Bootstrap info blue, or any color of choice */
+    display: inline-block; /* Allows for better positioning if needed */
+    vertical-align: middle; /* Align with select box text better */
+}
+
+#field-description-tooltip {
+    position: absolute; /* Positioned relative to the viewport or a positioned ancestor */
+    background-color: #333;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    z-index: 1010; /* Above chatbot panel if they overlap */
+    max-width: 300px; /* Prevent it from being too wide */
+    text-align: left;
+    white-space: pre-line; /* Respect newline characters in the tooltip content */
+    /* Smooth transition for visibility could be added if using opacity */
+    /* transition: opacity 0.2s; */
+}
+
+.tooltip-hidden {
+    display: none;
+    /* opacity: 0; */
+}
+
+.tooltip-visible {
+    display: block;
+    /* opacity: 1; */
+}
