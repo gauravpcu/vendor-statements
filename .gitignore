@@ -1,0 +1,30 @@
+# Ignore environment variables file
+.env
+
+# Python virtual environment
+venv/
+*.pyc
+__pycache__/
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+
+# Uploads directory - if it's not meant to be in the repo
+# uploads/
+# If uploads should be versioned (e.g. for default examples), then remove above line.
+# For this project, we've been treating it as a runtime-created dir.
+
+# Learned preferences and templates storage - if these are user-specific and not default examples
+# templates_storage/
+# learned_preferences_storage/
+# If these directories should contain default examples to be versioned, then remove above lines.
+# Given they store user-generated content, they are good candidates for .gitignore.
+
+# Log files
+*.log
+upload_history.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db

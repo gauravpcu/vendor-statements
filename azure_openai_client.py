@@ -1,6 +1,9 @@
 import os
 import openai
 import logging
+from dotenv import load_dotenv
+
+load_dotenv() # Load environment variables from .env file
 
 # Get a logger instance (consistent with app.py logging)
 logger = logging.getLogger('upload_history')
