@@ -82,49 +82,89 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Example: Make chatbot panel initially appear closed if preferred
-    // if (chatbotPanel) chatbotPanel.classList.add('hidden');
-    // if (toggleChatbotButton) toggleChatbotButton.textContent = '+';
-    // isChatbotOpen = false;
+    // Ensure chatbot is visible if hidden, when this is called.
+    window.promptToSaveTemplate = function(fileIdentifier) {
+        if (typeof window.toggleChatbot === 'function' && chatbotPanel && chatbotPanel.classList.contains('hidden')) {
+            window.toggleChatbot();
+        }
+
+        const promptMessageDiv = document.createElement('div');
+        promptMessageDiv.className = 'save-template-prompt';
+
+        const textNode = document.createTextNode(`You've made several changes to mappings for ${fileIdentifier}. Would you like to save these as a new template? `);
+        promptMessageDiv.appendChild(textNode);
+
+        const yesButton = document.createElement('button');
+        yesButton.textContent = "Yes, Save Template";
+        yesButton.className = "btn-save-template-yes"; // For styling and specific listener
+        yesButton.setAttribute('data-file-identifier', fileIdentifier);
+        promptMessageDiv.appendChild(yesButton);
+
+        const noButton = document.createElement('button');
+        noButton.textContent = "No, Thanks";
+        noButton.className = "btn-save-template-no";
+        promptMessageDiv.appendChild(noButton);
+
+        addBotMessage(promptMessageDiv); // addBotMessage now handles HTML elements
+
+        // No need to add listener here if using event delegation on chatbotMessagesDiv for these buttons
+    };
 
 
-    // Event listener for clicking on suggestion elements
+    // Event listener for clicking on suggestion elements OR buttons within bot messages
     if (chatbotMessagesDiv) {
         chatbotMessagesDiv.addEventListener('click', function(event) {
-            const suggestionElement = event.target.closest('.chatbot-suggestion');
+            const targetElement = event.target;
+
+            // Handle suggestion clicks
+            const suggestionElement = targetElement.closest('.chatbot-suggestion');
             if (suggestionElement) {
                 const suggestedField = suggestionElement.getAttribute('data-suggested-field');
+                // Use the new setCurrentChatbotOriginalHeader/getCurrentChatbotOriginalHeader from upload.js context
                 const originalHeader = window.getCurrentChatbotOriginalHeader ? window.getCurrentChatbotOriginalHeader() : null;
 
-                if (suggestedField && originalHeader) {
-                    // Find the corresponding select element in the main document
-                    // This assumes select elements have `data-original-header` attribute.
-                    const allSelects = document.querySelectorAll(`.mapped-field-select[data-original-header="${originalHeader}"]`);
 
+                if (suggestedField && originalHeader) {
+                    const allSelects = document.querySelectorAll(`.mapped-field-select[data-original-header="${originalHeader}"]`);
                     if (allSelects.length > 0) {
-                        // There might be multiple files on the page, so we need to be careful if headers are not unique across files.
-                        // For now, let's assume we are targeting the one relevant to the current interaction context.
-                        // If multiple files can have identical original headers, a more specific selector would be needed,
-                        // possibly involving the file index or a more unique ID on the select.
-                        // For this example, we'll update the first one found, or all if that's desired.
                         allSelects.forEach(selectElement => {
                             selectElement.value = suggestedField;
-                            // Trigger change event to update dependent things, like the 'data-current-mapped-field' on the help button
                             selectElement.dispatchEvent(new Event('change'));
                         });
-
                         addBotMessage(`Okay, I've updated the mapping for "${originalHeader}" to "${suggestedField}".`);
-
-                        // Optionally, clear context and/or hide chatbot
                         if(window.clearCurrentChatbotOriginalHeader) window.clearCurrentChatbotOriginalHeader();
-                        // if (isChatbotOpen) toggleChatbot(); // Optionally close chatbot
-
                     } else {
                         addBotMessage(`I couldn't find the dropdown for header "${originalHeader}" to update it.`);
                         console.error(`Could not find select element for original header: ${originalHeader}`);
                     }
                 } else {
-                    console.error("Missing suggested field or original header context for applying suggestion.", {suggestedField, originalHeader});
+                    console.error("Missing suggested field or original header context.", {suggestedField, originalHeader});
                 }
+                return; // Processed suggestion click
+            }
+
+            // Handle "Yes, Save Template" button from chatbot prompt
+            if (targetElement.classList.contains('btn-save-template-yes')) {
+                const fileIdentifier = targetElement.getAttribute('data-file-identifier');
+                const fileEntryElement = document.querySelector(`.file-entry[data-filename="${fileIdentifier}"]`);
+                if (fileEntryElement && typeof window.triggerSaveTemplateWorkflow === 'function') {
+                    addBotMessage("Okay, let's save that template...");
+                    window.triggerSaveTemplateWorkflow(fileIdentifier, fileEntryElement); // Pass fileEntryElement as context
+                    // Remove the prompt message after action (optional)
+                    targetElement.closest('.save-template-prompt').remove();
+                } else {
+                    console.error("Could not trigger save workflow. File entry or function missing for:", fileIdentifier);
+                    addBotMessage("Sorry, I couldn't start the save process. Please try using the main button.");
+                }
+                return; // Processed save confirmation
+            }
+
+            // Handle "No, Thanks" button from chatbot prompt
+            if (targetElement.classList.contains('btn-save-template-no')) {
+                addBotMessage("Okay, no problem!");
+                // Remove the prompt message
+                targetElement.closest('.save-template-prompt').remove();
+                return; // Processed "no thanks"
             }
         });
     }
