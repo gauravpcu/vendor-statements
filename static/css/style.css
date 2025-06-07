@@ -133,6 +133,52 @@
     font-size: 0.9em;
 }
 
+/* Vendor Name Input Styling */
+.vendor-name-container {
+    margin-top: 8px;
+    margin-bottom: 8px;
+    padding: 5px;
+    /* background-color: #fdfdfd; Optional: slight background differentiation */
+    /* border-bottom: 1px dashed #eee; */
+}
+
+.vendor-name-container label {
+    margin-right: 5px;
+    font-weight: normal;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.vendor-name-input {
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 0.9em;
+    max-width: 300px; /* Adjust as needed */
+}
+
+.apply-vendor-prefs-button {
+    margin-left: 10px;
+    padding: 6px 10px;
+    font-size: 0.85em;
+    color: #fff;
+    background-color: #545b62; /* Secondary/greyish color */
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.apply-vendor-prefs-button:disabled {
+    background-color: #c8cbce;
+    cursor: not-allowed;
+}
+
+.apply-vendor-prefs-button:hover:not(:disabled) {
+    background-color: #42474c;
+}
+
+
 /* Chatbot Styling */
 #chatbotPanel {
     position: fixed;
@@ -489,4 +535,51 @@
     border-radius: 4px;
     border: 1px solid #ced4da;
     font-size: 0.9em;
+}
+
+/* Remember Mapping Prompt Styling */
+.remember-mapping-prompt {
+    display: block; /* Take its own line below the dropdown */
+    margin-top: 5px;
+    padding: 5px;
+    background-color: #f0f8ff; /* AliceBlue or a very light blue/grey */
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: #333;
+}
+
+.remember-mapping-prompt strong,
+.remember-mapping-prompt em {
+    font-weight: bold; /* Make vendor name and headers stand out */
+}
+.remember-mapping-prompt em {
+    font-style: italic;
+}
+
+
+.remember-mapping-prompt button {
+    margin-left: 8px;
+    padding: 2px 6px;
+    font-size: 0.9em;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.btn-remember-yes {
+    background-color: #28a745; /* Green */
+    color: white;
+    border-color: #28a745;
+}
+.btn-remember-yes:hover {
+    background-color: #218838;
+}
+
+.btn-remember-no {
+    background-color: #6c757d; /* Grey */
+    color: white;
+    border-color: #6c757d;
+}
+.btn-remember-no:hover {
+    background-color: #5a6268;
 }

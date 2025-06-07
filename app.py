@@ -14,6 +14,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB limit
 TEMPLATES_DIR = "templates_storage"
+LEARNED_PREFERENCES_DIR = "learned_preferences_storage"
 
 
 # --- Field Definitions ---
@@ -55,6 +56,7 @@ if not file_handler_configured:
 # Create directories if they don't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
+os.makedirs(LEARNED_PREFERENCES_DIR, exist_ok=True)
 
 load_field_definitions()
 
@@ -137,7 +139,7 @@ def upload_files():
                             mappings = generate_mappings(headers_extraction_result, FIELD_DEFINITIONS)
                             results_entry["field_mappings"] = mappings
                             logger.info(f"Generated {len(mappings)} field mappings for {filename}.")
-                        else: # No headers found in file
+                        else:
                             results_entry["message"] += " (No headers found in file)"
                     elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result:
                         results_entry["success"] = False
@@ -156,9 +158,8 @@ def upload_files():
                            f"Message: {results_entry['message']}, Headers: {len(results_entry['headers'])}, Mappings: {len(results_entry['field_mappings'])}")
             logger.info(log_message)
 
-    if uploaded_file_count == 0 and len(results) > 0: # Check if any file was successfully uploaded
-        # If all files failed at upload/type detection stage, this could be a 400 or a 200 with detailed errors
-        pass # Fall through to return results, which will contain error details for each file
+    if uploaded_file_count == 0 and len(results) > 0:
+        pass
 
     return jsonify(results)
 
@@ -188,7 +189,7 @@ def process_file_data_route():
         return jsonify({"error": "Missing required fields"}), 400
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
     if not os.path.exists(file_path):
-        if not os.path.exists(file_identifier): # Check if full path was sent
+        if not os.path.exists(file_identifier):
             logger.error(f"File not found: {file_identifier}")
             return jsonify({"error": f"File not found: {file_identifier}"}), 404
         file_path = file_identifier
@@ -272,7 +273,7 @@ def list_templates_route():
 
 @app.route('/get_template/<path:template_file_id>', methods=['GET'])
 def get_template_route(template_file_id):
-    template_file_id = os.path.basename(template_file_id) # Security: ensure it's just a filename
+    template_file_id = os.path.basename(template_file_id)
     if not template_file_id.endswith(".json"):
         logger.warning(f"Attempt to access non-JSON as template: {template_file_id}")
         return jsonify({"error": "Invalid template format."}), 400
@@ -283,10 +284,103 @@ def get_template_route(template_file_id):
     try:
         with open(template_file_path, 'r', encoding='utf-8') as f:
             template_data = json.load(f)
-        return jsonify(template_data) # Returns full template content
+        return jsonify(template_data)
     except Exception as e:
         logger.error(f"Error retrieving template '{template_file_id}': {e}", exc_info=True)
         return jsonify({"error": "Could not read template file."}), 500
+
+@app.route('/apply_learned_preferences', methods=['POST'])
+def apply_learned_preferences_route():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    vendor_name = data.get('vendor_name', '').strip()
+    current_mappings_from_client = data.get('current_mappings')
+    if not vendor_name:
+        return jsonify({"error": "Vendor name is required to apply preferences."}), 400
+    if not current_mappings_from_client or not isinstance(current_mappings_from_client, list):
+        return jsonify({"error": "Current mappings data is invalid or missing."}), 400
+    sanitized_vendor_name = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in vendor_name)
+    if not sanitized_vendor_name:
+        return jsonify({"error": "Invalid vendor name after sanitization."}), 400
+    vendor_filename = f"{sanitized_vendor_name}.json"
+    preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
+    learned_prefs_map = {}
+    if os.path.exists(preference_file_path):
+        try:
+            with open(preference_file_path, 'r', encoding='utf-8') as f:
+                preferences_list = json.load(f)
+                if isinstance(preferences_list, list):
+                    for pref in preferences_list:
+                        if pref.get('original_header') and pref.get('mapped_field'):
+                            learned_prefs_map[pref['original_header']] = pref['mapped_field']
+                else:
+                    logger.warning(f"Preference file {preference_file_path} for {vendor_name} is not a list.")
+        except Exception as e_read_pref:
+            logger.error(f"Error reading preference file for {vendor_name} at {preference_file_path}: {e_read_pref}", exc_info=True)
+    if not learned_prefs_map:
+        logger.info(f"No learned preferences found for vendor: {vendor_name}")
+        return jsonify({
+            'updated_mappings': current_mappings_from_client,
+            'vendor_name': vendor_name,
+            'message': 'No learned preferences found for this vendor. Mappings unchanged.'
+        })
+    updated_mappings = []
+    applied_count = 0
+    for mapping_item in current_mappings_from_client:
+        new_mapping_item = mapping_item.copy()
+        original_header = mapping_item.get('original_header')
+        if original_header in learned_prefs_map:
+            preferred_mapped_field = learned_prefs_map[original_header]
+            if new_mapping_item.get('mapped_field') != preferred_mapped_field:
+                new_mapping_item['mapped_field'] = preferred_mapped_field
+                new_mapping_item['confidence_score'] = 99
+                new_mapping_item['method'] = 'Learned Preference'
+                applied_count +=1
+            elif new_mapping_item.get('method') != 'Learned Preference':
+                 new_mapping_item['confidence_score'] = max(new_mapping_item.get('confidence_score', 0), 99)
+                 new_mapping_item['method'] = 'Learned Verified'
+        updated_mappings.append(new_mapping_item)
+    logger.info(f"Applied {applied_count} learned preferences for vendor: {vendor_name}")
+    return jsonify({
+        'updated_mappings': updated_mappings,
+        'vendor_name': vendor_name,
+        'message': f'Applied {applied_count} learned preferences for {vendor_name}.' if applied_count > 0 else f'Mappings already align with preferences for {vendor_name}.'
+        })
+
+@app.route('/get_learned_preferences/<path:vendor_name>', methods=['GET'])
+def get_learned_preferences_route(vendor_name):
+    original_vendor_name = vendor_name
+    sanitized_vendor_name = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_vendor_name)
+    if not sanitized_vendor_name:
+        logger.warning(f"Vendor name '{original_vendor_name}' sanitized to an empty string.")
+        return jsonify({'vendor_name': original_vendor_name, 'preferences': [], 'message': 'Invalid vendor name resulting in empty filename.'}), 200 # Return 200 with empty, as client might expect this
+
+    vendor_filename = f"{sanitized_vendor_name}.json"
+    preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
+
+    if not os.path.exists(preference_file_path):
+        logger.info(f"No preference file found for vendor: '{original_vendor_name}' (expected at: {preference_file_path}).")
+        return jsonify({'vendor_name': original_vendor_name, 'preferences': []})
+
+    try:
+        with open(preference_file_path, 'r', encoding='utf-8') as f:
+            preferences_list = json.load(f)
+            if not isinstance(preferences_list, list):
+                logger.error(f"Preference file for '{original_vendor_name}' ({preference_file_path}) is corrupted (not a list).")
+                return jsonify({"error": f"Corrupted preference data for vendor '{original_vendor_name}'."}), 500
+
+        logger.info(f"Successfully retrieved {len(preferences_list)} preferences for vendor: '{original_vendor_name}'.")
+        return jsonify({'vendor_name': original_vendor_name, 'preferences': preferences_list})
+    except json.JSONDecodeError:
+        logger.error(f"Error decoding JSON from preference file for '{original_vendor_name}' ({preference_file_path}).", exc_info=True)
+        return jsonify({"error": f"Corrupted preference file for vendor '{original_vendor_name}'."}), 500
+    except IOError as e:
+        logger.error(f"IOError reading preference file for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
+        return jsonify({"error": f"Could not read preferences for vendor '{original_vendor_name}'."}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving preferences for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
+        return jsonify({"error": "An unexpected server error occurred while retrieving preferences."}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
