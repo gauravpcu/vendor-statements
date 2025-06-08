@@ -199,7 +199,21 @@ document.addEventListener('DOMContentLoaded', function () {
             mappedFieldCell.appendChild(select);
 
             const confidenceCell = row.insertCell();
-            confidenceCell.textContent = fieldMappings[index] ? (fieldMappings[index].confidence * 100).toFixed(0) + '%' : 'N/A';
+            // Diagnostic logging for confidence score
+            const mappingEntry = fieldMappings[index];
+            console.log(`[renderMappingTable] Header: '${header}', Index: ${index}, Mapping Entry:`, JSON.stringify(mappingEntry));
+            
+            let confidenceText = 'N/A'; // MODIFIED: Default to N/A
+            if (mappingEntry) {
+                console.log(`[renderMappingTable] Confidence Score for '${header}':`, mappingEntry.confidence_score, "Type:", typeof mappingEntry.confidence_score);
+                // MODIFIED: Added isNaN check
+                if (typeof mappingEntry.confidence_score === 'number' && !isNaN(mappingEntry.confidence_score)) {
+                    confidenceText = mappingEntry.confidence_score.toFixed(0) + '%';
+                } else if (mappingEntry.confidence_score !== undefined && mappingEntry.confidence_score !== null) {
+                    console.warn(`[renderMappingTable] Unexpected confidence_score for '${header}':`, mappingEntry.confidence_score, "Type:", typeof mappingEntry.confidence_score, "- Displaying N/A.");
+                }
+            }
+            confidenceCell.textContent = confidenceText; // MODIFIED: Use the determined confidenceText
 
             const actionCell = row.insertCell();
             const helpButton = document.createElement('button');
@@ -253,6 +267,85 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
             });
+
+            helpButton.addEventListener('click', function() {
+                const originalHeader = this.dataset.originalHeader;
+                const currentMapping = this.dataset.currentMapping; // This is the currently selected value in the dropdown
+                const fileIdentifier = this.dataset.fileIdentifier;
+                
+                console.log(`[Suggest Alternatives] Clicked for: Header='${originalHeader}', CurrentMap='${currentMapping}', File='${fileIdentifier}'`);
+
+                const anySelect = document.querySelector('.mapping-select');
+                let standardFieldNames = [];
+                if (anySelect) {
+                    standardFieldNames = Array.from(anySelect.options)
+                        .map(opt => opt.value)
+                        .filter(val => val && val !== '__CREATE_NEW__' && val !== '__IGNORE__');
+                }
+
+                if (standardFieldNames.length === 0) {
+                    displayMessage("Could not retrieve standard field names to suggest alternatives.", true);
+                    return;
+                }
+
+                if (typeof window.openChatbotPanel !== 'function' || typeof window.addBotMessage !== 'function') {
+                    console.error("Chatbot functions (openChatbotPanel or addBotMessage) are not available.");
+                    displayMessage("Chatbot functionality is not available to display suggestions.", true);
+                    return;
+                }
+
+                window.openChatbotPanel();
+                window.addBotMessage(`Suggesting alternatives for header: "${originalHeader}" (currently mapped to: ${currentMapping || 'N/A'})...`);
+
+                fetch('/chatbot_suggest_mapping', { // MODIFIED: Corrected endpoint
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        original_header: originalHeader,
+                        current_mapped_field: currentMapping, // MODIFIED: Corrected key
+                        standard_field_names: standardFieldNames // Kept for potential future use, backend currently ignores it
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        // Try to get error message from response body if possible
+                        return response.json().then(errData => {
+                            throw new Error(errData.error || `Server error: ${response.status}`);
+                        }).catch(() => { // If parsing error body fails
+                            throw new Error(`Server error: ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(suggestionsArray => { // MODIFIED: Handle direct array of suggestions
+                    if (suggestionsArray && suggestionsArray.length > 0) {
+                        if (suggestionsArray.length === 1 && suggestionsArray[0].suggested_field === 'N/A') {
+                            window.addBotMessage(`No alternative suggestions found for "${originalHeader}". Reason: ${suggestionsArray[0].reason || 'Not specified'}`);
+                        } else {
+                            let suggestionsMessage = `Suggested alternatives for "${originalHeader}":\\n`;
+                            suggestionsArray.forEach(suggestion => {
+                                if(suggestion.suggested_field !== 'N/A') { // Only show actual suggestions
+                                    suggestionsMessage += `- ${suggestion.suggested_field} (Reason: ${suggestion.reason || 'N/A'})\\n`;
+                                }
+                            });
+                            if (suggestionsMessage === `Suggested alternatives for "${originalHeader}":\\n`) { // No actual suggestions were added
+                                window.addBotMessage(`No alternative suggestions found for "${originalHeader}".`);
+                            } else {
+                                window.addBotMessage(suggestionsMessage);
+                            }
+                        }
+                    } else {
+                        window.addBotMessage(`No alternative suggestions found for "${originalHeader}".`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching suggestions:', error);
+                    window.addBotMessage(`Network error while fetching suggestions for "${originalHeader}": ${error.message}`, true);
+                });
+            });
+
         });
 
         // fileEntryDiv.appendChild(table); // Changed: append to the containerElement
