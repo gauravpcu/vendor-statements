@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Learned Vendor Preferences</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Basic page styling if not covered by main style.css */
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px;}
+
+        .content-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #d1d9e0;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .content-section h2 {
+            margin-top: 0;
+            color: #34495e;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        #vendorsListContainer ul { list-style-type: none; padding: 0; }
+        #vendorsListContainer li {
+            margin-bottom: 12px;
+            padding: 12px 15px;
+            background-color: #f9fafb;
+            border: 1px solid #e1e5e8;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+        #vendorsListContainer li:hover {
+            background-color: #f1f3f5;
+        }
+        #vendorsListContainer li .vendor-name {
+            font-weight: bold;
+            color: #2980b9;
+        }
+        #vendorsListContainer li .action-buttons button {
+            margin-left: 10px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s ease;
+        }
+        .view-prefs-btn { background-color: #3498db; color: white; }
+        .view-prefs-btn:hover { background-color: #2980b9; }
+        .delete-all-prefs-btn { background-color: #e74c3c; color: white; }
+        .delete-all-prefs-btn:hover { background-color: #c0392b; }
+
+        #preferencesForVendorContainer table {
+            width: 100%;
+            margin-top:15px;
+            border-collapse: collapse;
+        }
+        #preferencesForVendorContainer th,
+        #preferencesForVendorContainer td {
+            border: 1px solid #d1d9e0;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        #preferencesForVendorContainer th {
+            background-color: #3498db;
+            color: #fff;
+        }
+        #preferencesForVendorContainer tr:nth-child(even) { background-color: #f9fafb; }
+        #preferencesForVendorContainer tr:hover { background-color: #f1f3f5; }
+
+        .delete-specific-pref-btn {
+            color: #fff;
+            background-color: #e74c3c;
+            border:none;
+            padding: 5px 8px;
+            border-radius:3px;
+            font-size:0.85em;
+            cursor: pointer;
+        }
+        .delete-specific-pref-btn:hover { background-color: #c0392b; }
+
+        .back-link { display: block; text-align: center; margin-top: 30px; }
+        .back-link a {
+            text-decoration: none;
+            color: #3498db;
+            font-weight: bold;
+            padding: 10px 15px;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .back-link a:hover { background-color: #3498db; color: #fff; }
+
+        .message-area { text-align: center; padding: 10px; margin-top:15px; border-radius: 4px; }
+        .message-area.error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb;}
+        .message-area.success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb;}
+        .loading-text { color: #545b62; font-style: italic;}
+
+    </style>
+</head>
+<body>
+    <h1>Manage Learned Vendor Preferences</h1>
+
+    <div class="content-section" id="vendorsListContainer">
+        <h2>Vendors with Learned Preferences</h2>
+        <div id="globalMessages" class="message-area" style="display:none;"></div>
+        <p class="loading-text">Loading vendors...</p>
+        <!-- Vendors will be listed here by JavaScript -->
+        <!-- Example structure:
+        <ul>
+            <li>
+                <span class="vendor-name">Vendor A</span>
+                <span class="action-buttons">
+                    <button class="view-prefs-btn" data-vendorname="Vendor A">View/Edit Specific</button>
+                    <button class="delete-all-prefs-btn" data-vendorname="Vendor A">Delete All</button>
+                </span>
+            </li>
+        </ul>
+        -->
+    </div>
+
+    <div class="content-section" id="preferencesForVendorContainer" style="display:none;">
+        <h2>Preferences for <span id="selectedVendorName" style="color: #2980b9;"></span></h2>
+        <div id="specificPreferenceMessages" class="message-area" style="display:none;"></div>
+        <p class="loading-text">Loading preferences...</p>
+        <!-- Preferences for a selected vendor will be shown here as a table -->
+        <!-- Example table:
+        <table>
+            <thead>
+                <tr>
+                    <th>Original Header</th>
+                    <th>Mapped Field</th>
+                    <th>Last Updated</th>
+                    <th>Confirmation Count</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>INVOICE_ID</td>
+                    <td>InvoiceID</td>
+                    <td>2023-10-28T...</td>
+                    <td>3</td>
+                    <td><button class="delete-specific-pref-btn" data-vendorname="Vendor A" data-originalheader="INVOICE_ID">Delete</button></td>
+                </tr>
+            </tbody>
+        </table>
+        -->
+    </div>
+
+    <div class="back-link">
+        <a href="{{ url_for('index') }}">Back to Main Upload Page</a>
+    </div>
+
+    <!-- JavaScript file for this page -->
+    <script src="{{ url_for('static', filename='js/manage_preferences.js') }}"></script>
+</body>
+</html>

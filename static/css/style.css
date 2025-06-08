@@ -694,3 +694,22 @@
 .btn-remember-no:hover {
     background-color: #5a6268;
 }
+
+/* Navigation Links for Manage Templates page link */
+.navigation-links {
+    /* text-align: center; and margin-bottom: 20px; are already inline in index.html */
+    /* Additional styling can be added here if needed */
+}
+
+.navigation-links a {
+    margin: 0 10px; /* Spacing if multiple links are added later */
+    text-decoration: none;
+    color: #007bff; /* Standard link blue */
+    font-weight: bold;
+    padding: 5px 0; /* Add some padding for easier clicking */
+}
+
+.navigation-links a:hover {
+    text-decoration: underline;
+    color: #0056b3; /* Darker blue on hover */
+}

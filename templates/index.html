@@ -7,6 +7,13 @@
 </head>
 <body>
     <h1>Upload Files</h1>
+
+    <div class="navigation-links" style="text-align: center; margin-bottom: 20px;">
+        <a href="{{ url_for('manage_templates_page') }}">Manage Saved Templates</a>
+        <span style="margin: 0 10px;">|</span> <!-- Optional separator -->
+        <a href="{{ url_for('manage_preferences_page') }}">Manage Learned Preferences</a>
+    </div>
+
     <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" name="files[]" id="fileInput" multiple>
         <input type="submit" value="Upload">

@@ -89,35 +89,41 @@ if __name__ == '__main__':
     # print(f"PDF Info: {extract_headers('dummy.pdf', 'PDF')}")
     pass
 
-def extract_data(file_path, file_type, finalized_mappings, pdf_data_rows=None, pdf_original_headers=None, skip_rows=0):
+def extract_data(file_path, file_type, finalized_mappings, skip_rows=0, raw_pdf_table_content=None):
     """
     Reads data from a file, filters, and renames columns based on finalized mappings.
-    For PDFs, uses provided pdf_data_rows and pdf_original_headers.
+    For PDFs, uses provided raw_pdf_table_content { 'headers': [], 'data_rows': [[]] }.
     For CSV/Excel, uses skip_rows to ignore initial rows before header.
     Returns a list of dictionaries, where each dictionary is a row, or an error dict.
     """
     try:
         df = None
         if file_type == "PDF":
-            if pdf_data_rows is None or pdf_original_headers is None:
-                logger.error("PDF data_rows or original_headers not provided to extract_data.")
-                return {"error": "PDF data or headers not provided for data extraction."}
-            if not pdf_original_headers and pdf_data_rows: # If headers are empty list, but data rows exist
-                 logger.warning(f"PDF processed for {file_path} had data rows but no headers. Cannot create DataFrame meaningfully.")
-                 return {"error": "PDF has data rows but no headers were identified from the selected table."}
-            if not pdf_data_rows: # No data rows from the selected table
-                 logger.info(f"No data rows found in the selected PDF table for {file_path}.")
-                 return [] # Return empty list, as no data to process
+            if raw_pdf_table_content is None or \
+               not isinstance(raw_pdf_table_content, dict) or \
+               'headers' not in raw_pdf_table_content or \
+               'data_rows' not in raw_pdf_table_content:
+                logger.error("PDF raw_pdf_table_content not provided or invalid for extract_data.")
+                return {"error": "PDF content (headers/data rows) not provided or invalid for data extraction."}
 
-            # Ensure headers are unique if pandas is to use them. If not, this might cause issues.
-            # A more robust way would be to handle duplicate headers here if they are possible from pdfplumber extraction.
-            df = pd.DataFrame(pdf_data_rows, columns=pdf_original_headers)
-            # It's possible pdf_original_headers is empty if OCR found rows but no distinct header pattern.
-            # pd.DataFrame will create default 0,1,2... headers in that case.
-            # The mapping logic later (original_header in actual_file_headers_set) should handle this.
-            if df.empty and pdf_original_headers:
-                logger.info(f"PDF table for {file_path} (using provided rows/headers) was empty or only headers.")
+            pdf_original_headers = raw_pdf_table_content['headers']
+            pdf_data_rows = raw_pdf_table_content['data_rows']
+
+            if not pdf_original_headers and pdf_data_rows:
+                 logger.warning(f"PDF processed for {file_path} had data rows but no headers (from raw_pdf_table_content). Cannot create DataFrame meaningfully.")
+                 return {"error": "PDF has data rows but no headers were identified from the selected table (via raw_pdf_table_content)."}
+
+            # If there are headers but no data rows, an empty list of dicts is valid if mappings match headers.
+            # If there are no data_rows, df will be empty.
+            # If there are no headers, df will have default 0,1,2... headers.
+
+            df = pd.DataFrame(pdf_data_rows, columns=pdf_original_headers if pdf_original_headers else None)
+
+            if df.empty and not pdf_data_rows: # If data_rows was empty to begin with
+                logger.info(f"No data rows provided in raw_pdf_table_content for PDF {file_path}. Returning empty list.")
                 return []
+            # If df is empty but there were data_rows, it might be due to pd.DataFrame behavior with certain inputs.
+            # However, with list of lists (data_rows) and list (headers), it should generally work or raise error.
 
         elif file_type == "CSV":
             # For CSV, the header for data extraction is determined by skip_rows.

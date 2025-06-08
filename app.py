@@ -82,6 +82,7 @@ except Exception as e:
 if not app.config['INVOICE_VALIDATION_API_URL']:
     logger.warning("INVOICE_VALIDATION_API_URL is not set in environment variables. External invoice validation will be disabled.")
 
+TEMP_PDF_DATA_FOR_EXTRACTION = {}
 
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',
@@ -93,6 +94,14 @@ SUPPORTED_MIME_TYPES = {
 @app.route('/')
 def index():
     return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
+
+@app.route('/manage_templates')
+def manage_templates_page():
+    return render_template('manage_templates.html')
+
+@app.route('/manage_preferences')
+def manage_preferences_page():
+    return render_template('manage_preferences.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -162,6 +171,26 @@ def upload_files():
                         results_entry["success"] = False
                         results_entry["message"] = headers_extraction_result["error"]
 
+                    # If PDF and headers were extracted successfully, cache data_rows for later use in /process_file_data
+                    if results_entry["file_type"] == "PDF" and results_entry["success"] and isinstance(headers_extraction_result, list):
+                        # Call extract_headers_from_pdf_tables again to get the full context including data_rows
+                        # This is less ideal than extract_headers returning everything, but avoids major refactor of extract_headers now.
+                        logger.info(f"Fetching full PDF context (headers and data_rows) for {filename} for caching.")
+                        pdf_full_extraction_info = extract_headers_from_pdf_tables(file_path)
+                        if isinstance(pdf_full_extraction_info, dict) and not pdf_full_extraction_info.get("error"):
+                            original_pdf_headers = pdf_full_extraction_info.get('headers')
+                            pdf_table_data_rows = pdf_full_extraction_info.get('data_rows')
+                            if original_pdf_headers is not None and pdf_table_data_rows is not None:
+                                TEMP_PDF_DATA_FOR_EXTRACTION[filename] = {
+                                    'headers': original_pdf_headers,
+                                    'data_rows': pdf_table_data_rows
+                                }
+                                logger.info(f"Cached 'data_rows' for PDF {filename}. Headers count: {len(original_pdf_headers)}, Data rows count: {len(pdf_table_data_rows)}")
+                            else:
+                                logger.warning(f"Could not cache data_rows for PDF {filename} as headers or data_rows were missing from pdf_full_extraction_info.")
+                        else:
+                            logger.warning(f"Failed to get full PDF context for caching data_rows for {filename}. Error: {pdf_full_extraction_info.get('error') if isinstance(pdf_full_extraction_info, dict) else 'Unknown error'}")
+
                 results.append(results_entry)
 
             except Exception as e_save:
@@ -216,38 +245,39 @@ def process_file_data_route():
 
     logger.info(f"Processing data for: {file_path_on_disk}, type: {file_type}")
     try:
-        pdf_data_rows_for_extraction = None
-        pdf_original_headers_for_extraction = None
-
         if file_type == "PDF":
-            pdf_context = extract_headers_from_pdf_tables(file_path_on_disk)
-            if isinstance(pdf_context, dict) and "error" in pdf_context:
-                logger.error(f"PDF header/table context error for {file_path_on_disk}: {pdf_context['error']}")
-                return jsonify({"error": f"Could not retrieve table structure from PDF: {pdf_context['error']}"}), 400
+            raw_pdf_content_for_extraction = TEMP_PDF_DATA_FOR_EXTRACTION.pop(file_identifier, None)
+            if raw_pdf_content_for_extraction is None:
+                logger.error(f"PDF data for {file_identifier} not found in TEMP_PDF_DATA_FOR_EXTRACTION cache. It might have been processed already or upload failed to cache it.")
+                # Attempt to re-fetch PDF context as a fallback, though ideally it should be cached
+                logger.info(f"Attempting to re-fetch PDF context for {file_identifier} as it was not in cache.")
+                pdf_context_fallback = extract_headers_from_pdf_tables(file_path_on_disk)
+                if isinstance(pdf_context_fallback, dict) and not pdf_context_fallback.get("error"):
+                    raw_pdf_content_for_extraction = {
+                        'headers': pdf_context_fallback.get('headers'),
+                        'data_rows': pdf_context_fallback.get('data_rows')
+                    }
+                    logger.info(f"Successfully re-fetched PDF context for {file_identifier} for data extraction.")
+                else:
+                    error_msg = f"PDF data for {file_identifier} not found in cache and could not be re-fetched. Please re-upload the file or check earlier logs. Fallback error: {pdf_context_fallback.get('error', 'Unknown error during fallback') if isinstance(pdf_context_fallback, dict) else 'Type error in fallback result'}."
+                    logger.error(error_msg)
+                    return jsonify({"error": error_msg}), 400 # 400 or 500 depending on whether client can fix
 
-            pdf_data_rows_for_extraction = pdf_context.get('data_rows')
-            pdf_original_headers_for_extraction = pdf_context.get('headers')
-
-            if pdf_data_rows_for_extraction is None or pdf_original_headers_for_extraction is None:
-                logger.error(f"PDF context missing data_rows or headers for {file_path_on_disk}.")
-                return jsonify({"error": "Failed to get consistent table data from PDF for extraction."}), 500
-
-            # For PDF, skip_rows is not passed to extract_data as it's handled during header/table identification
+            # For PDF, skip_rows is not directly passed to extract_data as the raw_pdf_content already reflects the chosen table.
+            # skip_rows from client might be relevant if we were to re-select a table, but current logic doesn't do that here.
             extracted_data_list_or_error = extract_data(
                 file_path_on_disk,
                 file_type,
                 finalized_mappings,
-                pdf_data_rows=pdf_data_rows_for_extraction,
-                pdf_original_headers=pdf_original_headers_for_extraction
-                # skip_rows is NOT passed here for PDF
+                raw_pdf_table_content=raw_pdf_content_for_extraction
+                # skip_rows is NOT passed here for PDF with raw_pdf_table_content
             )
-        else:
-            # For CSV/Excel, pass the skip_rows from the request
+        else: # For CSV/Excel
             extracted_data_list_or_error = extract_data(
                 file_path_on_disk,
                 file_type,
                 finalized_mappings,
-                skip_rows=skip_rows
+                skip_rows=skip_rows # skip_rows is relevant for CSV/Excel
             )
 
         if isinstance(extracted_data_list_or_error, dict) and "error" in extracted_data_list_or_error:
@@ -393,11 +423,17 @@ def list_templates_route():
                     with open(template_file_path, 'r', encoding='utf-8') as f:
                         template_data = json.load(f)
                         display_name = template_data.get('template_name')
-                        file_id = template_data.get('filename', f_name)
+                        file_id = template_data.get('filename', f_name) # Use actual filename as file_id for robustness
+                        creation_timestamp = template_data.get('creation_timestamp', 'N/A')
+
                         if display_name and file_id:
-                            templates_info.append({'display_name': display_name, 'file_id': file_id})
+                            templates_info.append({
+                                'display_name': display_name,
+                                'file_id': file_id, # This is the actual filename like "MyTemplate.json"
+                                'creation_timestamp': creation_timestamp
+                            })
                         else:
-                            logger.warning(f"Skipping template '{f_name}': missing name/filename key.")
+                            logger.warning(f"Skipping template '{f_name}': missing 'template_name' or 'filename' key in JSON content.")
                 except Exception as e_file:
                     logger.error(f"Error processing template file '{f_name}': {e_file}", exc_info=True)
         templates_info.sort(key=lambda x: x['display_name'].lower())
@@ -503,22 +539,158 @@ def get_learned_preferences_route(vendor_name):
 
     try:
         with open(preference_file_path, 'r', encoding='utf-8') as f:
-            preferences_list = json.load(f)
-            if not isinstance(preferences_list, list):
-                logger.error(f"Preference file for '{original_vendor_name}' ({preference_file_path}) corrupted.")
-                return jsonify({"error": f"Corrupted data for vendor '{original_vendor_name}'."}), 500
+            loaded_data = json.load(f)
 
-        logger.info(f"Retrieved {len(preferences_list)} preferences for vendor: '{original_vendor_name}'.")
-        return jsonify({'vendor_name': original_vendor_name, 'preferences': preferences_list})
+        preferences_list = []
+        actual_vendor_name_from_file = original_vendor_name # Default to passed name
+
+        if isinstance(loaded_data, dict) and 'preferences' in loaded_data:
+            # New format: dict with "original_vendor_name" and "preferences" list
+            preferences_list = loaded_data.get('preferences', [])
+            actual_vendor_name_from_file = loaded_data.get('original_vendor_name', original_vendor_name)
+            if not isinstance(preferences_list, list):
+                 logger.error(f"Preference file {vendor_filename} for '{original_vendor_name}' has 'preferences' key but it's not a list.")
+                 return jsonify({"error": f"Corrupted data structure in preference file for '{original_vendor_name}'."}), 500
+        elif isinstance(loaded_data, list):
+            # Old format: file is directly a list of preferences
+            logger.warning(f"Old preference file format (list) detected for {vendor_filename} during get. Consider re-saving to update format.")
+            preferences_list = loaded_data
+            # actual_vendor_name_from_file remains original_vendor_name from route
+        else:
+            logger.error(f"Preference file {vendor_filename} for '{original_vendor_name}' is neither a list nor the expected dict structure.")
+            return jsonify({"error": f"Unexpected data structure in preference file for '{original_vendor_name}'."}), 500
+
+        logger.info(f"Retrieved {len(preferences_list)} preferences for vendor: '{actual_vendor_name_from_file}' (file: {vendor_filename}).")
+        return jsonify({'vendor_name': actual_vendor_name_from_file, 'preferences': preferences_list})
     except json.JSONDecodeError:
-        logger.error(f"JSON decode error for '{original_vendor_name}' ({preference_file_path}).", exc_info=True)
-        return jsonify({"error": f"Corrupted preference file for '{original_vendor_name}'."}), 500
+        logger.error(f"JSON decode error for '{original_vendor_name}' (file: {vendor_filename}).", exc_info=True)
+        return jsonify({"error": f"Corrupted preference file (JSON decode error) for '{original_vendor_name}'."}), 500
     except IOError as e:
         logger.error(f"IOError for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
         return jsonify({"error": f"Could not read preferences for '{original_vendor_name}'."}), 500
     except Exception as e:
         logger.error(f"Unexpected error for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
         return jsonify({"error": "Unexpected server error retrieving preferences."}), 500
+
+@app.route('/save_learned_preference', methods=['POST'])
+def save_learned_preference_route():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    vendor_name = data.get('vendor_name', '').strip() # This is the original, user-provided name
+    original_header = data.get('original_header', '').strip()
+    mapped_field = data.get('mapped_field', '').strip()
+
+    if not vendor_name or not original_header or not mapped_field:
+        missing = [f for f, v in [('vendor_name', vendor_name), ('original_header', original_header), ('mapped_field', mapped_field)] if not v]
+        return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+    if mapped_field == 'N/A': # Do not save 'N/A' as a learned preference
+        return jsonify({"status": "info", "message": "Preference not saved for 'N/A' mapping."}), 200
+
+    sanitized_vendor_name_part = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in vendor_name)
+    if not sanitized_vendor_name_part:
+        logger.warning(f"Vendor name '{vendor_name}' sanitized to empty. Cannot save preference.")
+        return jsonify({"error": "Invalid vendor name after sanitization."}), 400
+
+    vendor_filename = f"{sanitized_vendor_name_part}.json"
+    preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
+
+    logger.info(f"Saving learned preference for Vendor: '{vendor_name}', Header: '{original_header}' -> '{mapped_field}' into file: {vendor_filename}")
+
+    file_data = {"original_vendor_name": vendor_name, "preferences": []}
+
+    try:
+        if os.path.exists(preference_file_path):
+            with open(preference_file_path, 'r', encoding='utf-8') as f:
+                try:
+                    loaded_data = json.load(f)
+                    # Check if loaded_data is a dict and has 'preferences' list
+                    if isinstance(loaded_data, dict) and isinstance(loaded_data.get('preferences'), list):
+                        file_data = loaded_data
+                        file_data['original_vendor_name'] = vendor_name # Update in case casing changed etc.
+                    else: # Old format (just a list) or corrupted - try to salvage if list, else overwrite
+                        if isinstance(loaded_data, list):
+                             logger.warning(f"Old preference file format (list) detected for {vendor_filename}. Converting to new dict format.")
+                             file_data['preferences'] = loaded_data
+                             file_data['original_vendor_name'] = vendor_name # Ensure original name is now stored
+                        else:
+                             logger.warning(f"Preference file {vendor_filename} was not a list or expected dict. Initializing with new structure.")
+                            # file_data is already initialized correctly for this case
+                except json.JSONDecodeError:
+                    logger.warning(f"Could not decode JSON from {preference_file_path}. Initializing with new structure.")
+                    # file_data is already initialized
+
+        preferences_list = file_data.get('preferences', [])
+        found_preference = False
+        for pref in preferences_list:
+            if pref.get('original_header') == original_header:
+                pref['mapped_field'] = mapped_field
+                pref['last_updated'] = datetime.datetime.utcnow().isoformat() + "Z"
+                pref['confirmation_count'] = pref.get('confirmation_count', 0) + 1
+                found_preference = True
+                break
+
+        if not found_preference:
+            preferences_list.append({
+                'original_header': original_header,
+                'mapped_field': mapped_field,
+                'last_updated': datetime.datetime.utcnow().isoformat() + "Z",
+                'confirmation_count': 1
+            })
+
+        file_data['preferences'] = preferences_list
+
+        with open(preference_file_path, 'w', encoding='utf-8') as f:
+            json.dump(file_data, f, indent=4)
+
+        logger.info(f"Successfully saved preference for vendor '{vendor_name}', header '{original_header}' to {vendor_filename}.")
+        return jsonify({"status": "success", "message": "Learned preference saved."}), 200
+
+    except Exception as e:
+        logger.error(f"Error saving learned preference for vendor '{vendor_name}' to {vendor_filename}: {e}", exc_info=True)
+        return jsonify({"error": "Could not save learned preference due to a server error."}), 500
+
+@app.route('/list_vendors_with_preferences', methods=['GET'])
+def list_vendors_with_preferences_route():
+    vendors_info = []
+    if not os.path.exists(LEARNED_PREFERENCES_DIR):
+        logger.warning(f"Learned preferences directory '{LEARNED_PREFERENCES_DIR}' not found.")
+        return jsonify({'vendors': [], 'message': 'Learned preferences directory not found.'})
+
+    try:
+        for f_name in os.listdir(LEARNED_PREFERENCES_DIR):
+            if f_name.endswith(".json"):
+                preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, f_name)
+                display_name = f_name[:-5] # Default to filename without .json
+                try:
+                    with open(preference_file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        # New format check: data is dict and has 'original_vendor_name'
+                        if isinstance(data, dict) and 'original_vendor_name' in data:
+                            display_name = data.get('original_vendor_name', display_name)
+                        # Old format check: data is list (no original_vendor_name stored inside)
+                        # In this case, display_name remains filename without .json
+                        elif isinstance(data, list):
+                            logger.info(f"Vendor preference file '{f_name}' is in old list format. Display name will be derived from filename.")
+                        else:
+                            logger.warning(f"Vendor preference file '{f_name}' has an unexpected structure. Display name will be derived from filename.")
+
+                    vendors_info.append({
+                        'display_name': display_name,
+                        'vendor_file_id': f_name # Actual filename, e.g., "My_Vendor_Inc.json"
+                    })
+                except json.JSONDecodeError:
+                    logger.error(f"Could not decode JSON from preference file '{f_name}'. Skipping.")
+                except Exception as e_file:
+                    logger.error(f"Error processing preference file '{f_name}': {e_file}", exc_info=True)
+
+        vendors_info.sort(key=lambda x: x['display_name'].lower())
+        return jsonify({'vendors': vendors_info})
+    except Exception as e_list:
+        logger.error(f"Error listing vendor preferences from '{LEARNED_PREFERENCES_DIR}': {e_list}", exc_info=True)
+        return jsonify({'vendors': [], 'error': 'Could not retrieve vendor preferences list.'}), 500
 
 @app.route('/re_extract_headers', methods=['POST'])
 def re_extract_headers_route():
@@ -579,6 +751,155 @@ def re_extract_headers_route():
         logger.error(f"Unexpected error in /re_extract_headers for {file_identifier}: {e}", exc_info=True)
         return jsonify({"success": False, "error": "An internal server error occurred while re-extracting headers."}), 500
 
+@app.route('/delete_template/<path:template_filename>', methods=['DELETE'])
+def delete_template(template_filename):
+    # Basic security check for path traversal or invalid characters
+    if '/' in template_filename or '..' in template_filename:
+        logger.warning(f"Attempt to delete template with invalid path: {template_filename}")
+        return jsonify({'error': 'Invalid template filename.'}), 400
+
+    # Ensure the filename is somewhat sane (e.g., ends with .json, though client should send correct one)
+    # For this implementation, we'll rely on the client sending the correct filename as obtained from /list_templates
+    # which should include the .json extension.
+    if not template_filename.endswith(".json"):
+        logger.warning(f"Attempt to delete template without .json extension: {template_filename}")
+        # Optionally, append .json, but better if client is consistent.
+        # For now, treat as potentially invalid if not ending with .json, or rely on full name from client.
+        # Let's assume client sends the filename as listed (which includes .json)
+        pass # Assuming template_filename from client is already correct like "MyTemplate.json"
+
+    file_to_delete = os.path.join(TEMPLATES_DIR, template_filename)
+
+    logger.info(f"Attempting to delete template: {file_to_delete}")
+
+    try:
+        if os.path.exists(file_to_delete) and os.path.isfile(file_to_delete):
+            os.remove(file_to_delete)
+            logger.info(f"Successfully deleted template: {template_filename}")
+            return jsonify({'status': 'success', 'message': f"Template '{template_filename}' deleted successfully."}), 200
+        else:
+            logger.warning(f"Template not found for deletion: {template_filename} (path: {file_to_delete})")
+            return jsonify({'error': f"Template '{template_filename}' not found."}), 404
+    except OSError as e:
+        logger.error(f"OSError when trying to delete template '{template_filename}': {e}", exc_info=True)
+        return jsonify({'error': f'Failed to delete template due to a storage error: {e.strerror}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error when trying to delete template '{template_filename}': {e}", exc_info=True)
+        return jsonify({'error': 'Failed to delete template due to an unexpected server error.'}), 500
+
+@app.route('/delete_vendor_preferences/<path:vendor_name>', methods=['DELETE'])
+def delete_vendor_preferences(vendor_name):
+    original_vendor_name = vendor_name # Keep original for messages
+
+    # Sanitize vendor_name to create a safe filename
+    sanitized_name_part = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_vendor_name)
+
+    if not sanitized_name_part: # Check if sanitization resulted in an empty string
+        logger.warning(f"Attempt to delete preferences for vendor '{original_vendor_name}' which sanitized to an empty filename part.")
+        return jsonify({'error': 'Invalid vendor name provided (results in empty filename).'}), 400
+
+    vendor_filename = f"{sanitized_name_part}.json"
+    preference_file_to_delete = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
+
+    logger.info(f"Attempting to delete learned preferences for vendor '{original_vendor_name}' (file: {vendor_filename}) at path: {preference_file_to_delete}")
+
+    try:
+        if os.path.exists(preference_file_to_delete) and os.path.isfile(preference_file_to_delete):
+            os.remove(preference_file_to_delete)
+            logger.info(f"Successfully deleted preferences file: {vendor_filename} for vendor: {original_vendor_name}")
+            return jsonify({
+                'status': 'success',
+                'message': f"All learned preferences for vendor '{original_vendor_name}' (file: '{vendor_filename}') deleted successfully."
+            }), 200
+        else:
+            logger.warning(f"Preference file not found for vendor '{original_vendor_name}' (file: {vendor_filename}) at path: {preference_file_to_delete}")
+            return jsonify({
+                'error': f"No learned preferences found for vendor '{original_vendor_name}' (file: '{vendor_filename}')."
+            }), 404
+    except OSError as e:
+        logger.error(f"OSError when trying to delete preference file '{vendor_filename}' for vendor '{original_vendor_name}': {e}", exc_info=True)
+        return jsonify({'error': f'Failed to delete vendor preferences due to a storage error: {e.strerror}'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error when trying to delete preference file '{vendor_filename}' for vendor '{original_vendor_name}': {e}", exc_info=True)
+        return jsonify({'error': 'Failed to delete vendor preferences due to an unexpected server error.'}), 500
+
+@app.route('/delete_specific_vendor_preference', methods=['POST'])
+def delete_specific_vendor_preference():
+    data = request.get_json()
+    if not data:
+        logger.warning("Request to /delete_specific_vendor_preference with no JSON data.")
+        return jsonify({"error": "No data provided"}), 400
+
+    original_vendor_name = data.get('vendor_name', '').strip()
+    original_header = data.get('original_header', '').strip()
+
+    if not original_vendor_name or not original_header:
+        missing_fields = []
+        if not original_vendor_name: missing_fields.append("vendor_name")
+        if not original_header: missing_fields.append("original_header")
+        logger.warning(f"Missing fields in /delete_specific_vendor_preference: {', '.join(missing_fields)}")
+        return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+    # Sanitize vendor_name to create a safe filename
+    sanitized_name_part = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_vendor_name)
+
+    if not sanitized_name_part:
+        logger.warning(f"Vendor name '{original_vendor_name}' sanitized to empty for specific preference deletion.")
+        return jsonify({'error': 'Invalid vendor name provided (results in empty filename).'}), 400
+
+    vendor_filename = f"{sanitized_name_part}.json"
+    preference_file_path = os.path.join(LEARNED_PREFERENCES_DIR, vendor_filename)
+
+    logger.info(f"Attempting to delete specific preference: Header '{original_header}' for Vendor '{original_vendor_name}' (File: {vendor_filename})")
+
+    if not (os.path.exists(preference_file_path) and os.path.isfile(preference_file_path)):
+        logger.warning(f"Preference file not found for vendor '{original_vendor_name}' (File: {vendor_filename}) when trying to delete specific preference.")
+        return jsonify({'error': f"No preferences found for vendor '{original_vendor_name}'."}), 404
+
+    try:
+        with open(preference_file_path, 'r', encoding='utf-8') as f:
+            preferences_list = json.load(f)
+            if not isinstance(preferences_list, list): # Should be a list of dicts
+                logger.error(f"Preference file {vendor_filename} for vendor {original_vendor_name} is corrupted (not a list).")
+                return jsonify({'error': 'Preference file is corrupted.'}), 500
+    except json.JSONDecodeError:
+        logger.error(f"JSON decode error for preference file {vendor_filename} (Vendor: {original_vendor_name}).", exc_info=True)
+        return jsonify({'error': 'Could not parse preference file.'}), 500
+    except IOError as e:
+        logger.error(f"IOError reading preference file {vendor_filename} (Vendor: {original_vendor_name}): {e}", exc_info=True)
+        return jsonify({'error': 'Could not read preference file.'}), 500
+    except Exception as e: # Catch any other unexpected error during file read
+        logger.error(f"Unexpected error reading preference file {vendor_filename} (Vendor: {original_vendor_name}): {e}", exc_info=True)
+        return jsonify({'error': 'An unexpected server error occurred while reading preferences.'}), 500
+
+    original_length = len(preferences_list)
+    # Filter out the specific preference
+    preferences_list = [pref for pref in preferences_list if pref.get('original_header') != original_header]
+    preference_found_and_removed = len(preferences_list) < original_length
+
+    if preference_found_and_removed:
+        try:
+            if not preferences_list: # List is now empty
+                os.remove(preference_file_path)
+                logger.info(f"Removed empty preference file {vendor_filename} for vendor '{original_vendor_name}' after deleting last specific preference.")
+                message = f"Preference for header '{original_header}' deleted. All preferences for vendor '{original_vendor_name}' are now cleared as the list was empty."
+            else:
+                with open(preference_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(preferences_list, f, indent=4)
+                logger.info(f"Successfully deleted preference for header '{original_header}' for vendor '{original_vendor_name}' in file {vendor_filename}.")
+                message = f"Preference for header '{original_header}' for vendor '{original_vendor_name}' deleted successfully."
+
+            return jsonify({'status': 'success', 'message': message}), 200
+
+        except OSError as e:
+            logger.error(f"OSError when saving/deleting preference file {vendor_filename} (Vendor: {original_vendor_name}) after modification: {e}", exc_info=True)
+            return jsonify({'error': f'Failed to update preference file due to a storage error: {e.strerror}'}), 500
+        except Exception as e: # Catch any other unexpected error during file write/delete
+            logger.error(f"Unexpected error saving/deleting preference file {vendor_filename} (Vendor: {original_vendor_name}) after modification: {e}", exc_info=True)
+            return jsonify({'error': 'An unexpected server error occurred while updating preferences.'}), 500
+    else:
+        logger.warning(f"No preference found for header '{original_header}' for vendor '{original_vendor_name}' (File: {vendor_filename}). No changes made.")
+        return jsonify({'error': f"No preference found for header '{original_header}' for vendor '{original_vendor_name}'."}), 404
 
 if __name__ == "__main__":
     app.run(debug=True)
