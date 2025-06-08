@@ -1,9 +1,10 @@
 import pandas as pd
 import pdfplumber
 import logging
-from PIL import Image # For OCR
+from PIL import Image
 import pytesseract
-from pdf2image import convert_from_path, pdfinfo_from_path # For OCR
+from pytesseract import Output as PytesseractOutput # Import Output for image_to_data
+from pdf2image import convert_from_path, pdfinfo_from_path
 
 logger = logging.getLogger('upload_history')
 
@@ -318,14 +319,116 @@ def extract_headers_from_pdf_tables(file_path: str) -> dict:
                     images = convert_from_path(file_path, first_page=1, last_page=1, poppler_path=None) # Specify poppler_path if not in PATH
                     if images:
                         first_page_image = images[0]
-                        ocr_text = pytesseract.image_to_string(first_page_image)
-                        logger.info(f"OCR Diagnostic Text (first 500 chars) from first page of {file_path}:\n{ocr_text[:500]}...")
-                        if ocr_text.strip():
-                            ocr_diagnostic_message = " OCR diagnostic on first page yielded some text. This might indicate a scanned PDF."
-                        else:
-                            ocr_diagnostic_message = " OCR diagnostic on first page yielded no text."
-                    else:
-                        msg = f"Could not convert first page of {file_path} to image for OCR diagnostic (pdf2image returned no images)."
+
+                        # Perform OCR to get structured data
+                        ocr_data = pytesseract.image_to_data(first_page_image, output_type=PytesseractOutput.DICT, lang='eng')
+
+                        lines = {} # key: (block_num, par_num, line_num), value: list of word dicts
+                        conf_threshold = 40 # Confidence threshold for words
+
+                        for i in range(len(ocr_data['text'])):
+                            word_text = ocr_data['text'][i].strip()
+                            word_conf = int(ocr_data['conf'][i])
+
+                            if word_conf > conf_threshold and word_text:
+                                line_key = (
+                                    ocr_data['block_num'][i],
+                                    ocr_data['par_num'][i],
+                                    ocr_data['line_num'][i]
+                                )
+                                if line_key not in lines:
+                                    lines[line_key] = []
+                                lines[line_key].append({
+                                    'text': word_text,
+                                    'left': int(ocr_data['left'][i]), # Ensure int for sorting
+                                    'top': int(ocr_data['top'][i]),
+                                    'width': int(ocr_data['width'][i]),
+                                    'height': int(ocr_data['height'][i])
+                                })
+
+                        reconstructed_rows = []
+                        for line_key in sorted(lines.keys()): # Sort by block, paragraph, line number
+                            sorted_words_in_line = sorted(lines[line_key], key=lambda w: w['left'])
+                            reconstructed_rows.append([word['text'] for word in sorted_words_in_line])
+
+                        reconstructed_lines_with_coords = [] # List of lines, where each line is list of word dicts
+                        for line_key in sorted(lines.keys()):
+                            reconstructed_lines_with_coords.append(sorted(lines[line_key], key=lambda w: w['left']))
+
+                        ocr_grid_data = []
+                        max_cols = 0
+
+                        if reconstructed_lines_with_coords:
+                            # Estimate average character width for GAP_THRESHOLD (very rough)
+                            avg_char_width = 5 # Default if no words found
+                            total_width = 0
+                            total_chars = 0
+                            for line in reconstructed_lines_with_coords:
+                                for word in line:
+                                    total_width += word['width']
+                                    total_chars += len(word['text'])
+                            if total_chars > 0:
+                                avg_char_width = total_width / total_chars
+
+                            GAP_THRESHOLD = avg_char_width * 1.8 # Heuristic, e.g., 1.8 average character widths
+
+                            for line_coords in reconstructed_lines_with_coords:
+                                if not line_coords: continue
+                                current_row_cells = []
+                                current_cell_text = line_coords[0]['text']
+                                for i in range(1, len(line_coords)):
+                                    prev_word_end = line_coords[i-1]['left'] + line_coords[i-1]['width']
+                                    current_word_start = line_coords[i]['left']
+                                    gap = current_word_start - prev_word_end
+
+                                    if gap > GAP_THRESHOLD:
+                                        current_row_cells.append(current_cell_text.strip())
+                                        current_cell_text = line_coords[i]['text']
+                                    else:
+                                        current_cell_text += " " + line_coords[i]['text']
+                                current_row_cells.append(current_cell_text.strip())
+                                ocr_grid_data.append(current_row_cells)
+
+                            if ocr_grid_data:
+                                for row in ocr_grid_data: # Calculate max_cols based on actual grid
+                                    max_cols = max(max_cols, len(row))
+                                for row in ocr_grid_data: # Normalize grid
+                                    while len(row) < max_cols:
+                                        row.append("")
+
+                            logger.info(f"OCR Grid Reconstruction POC (first 5 rows, {max_cols} max cols) from {file_path}: {ocr_grid_data[:5]}")
+                            ocr_diagnostic_message = f" OCR Grid POC: Reconstructed grid with {len(ocr_grid_data)} rows and {max_cols} max columns."
+                            # Store ocr_grid_data in the result for this function
+                            # This is a deviation from just returning headers, but necessary for PDF OCR path
+                            # The main extract_headers will need to handle this dict structure for PDF if OCR was attempted.
+                            # However, the plan is that extract_headers just returns the headers list.
+                            # So, we'll add 'ocr_grid_data' to the dict that extract_headers_from_pdf_tables returns.
+
+                            # Now, if ocr_grid_data was successfully created and is not empty:
+                            if ocr_grid_data and len(ocr_grid_data) >= 1: # Need at least one row for headers
+                                potential_ocr_headers_list = ocr_grid_data[0]
+                                cleaned_ocr_headers = [str(cell).strip() for cell in potential_ocr_headers_list]
+
+                                # Update the return dictionary with OCR-derived headers and data
+                                # This effectively makes the OCR result the primary if pdfplumber found nothing.
+                                base_message = 'No tables found by pdfplumber.' + ocr_diagnostic_message + " Headers identified from OCR data."
+                                logger.info(f"Using OCR-derived headers for {file_path}: {cleaned_ocr_headers}")
+                                return {
+                                    'headers': cleaned_ocr_headers,
+                                    'selected_table_index': 'ocr_derived', # Special index for OCR source
+                                    'selected_table_data': ocr_grid_data, # The full grid from OCR
+                                    'data_rows': ocr_grid_data[1:] if len(ocr_grid_data) > 1 else [], # Data rows are the rest
+                                    'message': base_message,
+                                    'ocr_grid_data': ocr_grid_data # Keep this for any further diagnostics if needed
+                                }
+                            else: # ocr_grid_data is empty or no rows
+                                ocr_diagnostic_message += " OCR data did not yield a usable table structure."
+                                logger.info(f"OCR data for {file_path} did not yield a usable table structure.")
+                        else: # No reconstructed_lines_with_coords
+                            logger.info(f"OCR POC for {file_path}: No text lines reconstructed to form a grid.")
+                            ocr_diagnostic_message = " OCR POC: No text lines reconstructed to form a grid."
+                    else: # No images from pdf2image
+                        msg = f"Could not convert first page of {file_path} to image for OCR diagnostic."
                         logger.warning(msg)
                         ocr_diagnostic_message = f" {msg}"
                 else:
@@ -337,9 +440,11 @@ def extract_headers_from_pdf_tables(file_path: str) -> dict:
                 logger.error(f"Error during OCR diagnostic attempt for {file_path}: {e_ocr}", exc_info=True)
                 ocr_diagnostic_message = f" OCR diagnostic failed: {str(e_ocr)}."
 
+        # This path is reached if OCR was attempted but didn't result in usable headers, or if OCR wasn't attempted due to sufficient pdfplumber text.
         base_message = 'No tables found in PDF via direct extraction.' + ocr_diagnostic_message
         return {'headers': [], 'selected_table_index': -1, 'selected_table_data': [], 'data_rows': [], 'message': base_message}
 
+    # This part is for when pdfplumber *did* find tables.
     selected_table_index = -1
     primary_table_data = None
 

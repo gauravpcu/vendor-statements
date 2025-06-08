@@ -164,7 +164,6 @@ def upload_files():
 
 @app.route('/chatbot_suggest_mapping', methods=['POST'])
 def chatbot_suggest_mapping_route():
-    # ... (implementation as before)
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided"}), 400
     original_header = data.get('original_header')
@@ -233,7 +232,6 @@ def process_file_data_route():
 
 @app.route('/view_uploaded_file/<path:filename>')
 def view_uploaded_file(filename):
-    # ... (implementation as before)
     try:
         upload_folder_abs = os.path.abspath(app.config['UPLOAD_FOLDER'])
         logger.info(f"Serving file: {filename} from {upload_folder_abs}")
@@ -245,34 +243,97 @@ def view_uploaded_file(filename):
         logger.error(f"Error serving file {filename}: {e}", exc_info=True)
         return "Error serving file.", 500
 
-
 @app.route('/save_template', methods=['POST'])
 def save_template_route():
-    # ... (implementation as before)
     data = request.get_json()
-    if not data: return jsonify({"error": "No data provided"}), 400
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
     original_template_name = data.get('template_name', '').strip()
     field_mappings = data.get('field_mappings')
-    if not original_template_name: return jsonify({"error": "Template name required."}), 400
-    if not field_mappings or not isinstance(field_mappings, list) or not field_mappings:
-        return jsonify({"error": "Field mappings required."}), 400
-    sanitized_name = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_template_name)
-    if not sanitized_name: sanitized_name = "unnamed_template"
-    filename = f"{sanitized_name}.json"
-    template_file_path = os.path.join(TEMPLATES_DIR, filename)
-    template_data = {"template_name": original_template_name, "filename": filename,
-                     "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z", "field_mappings": field_mappings}
-    try:
-        with open(template_file_path, 'w', encoding='utf-8') as f:
-            json.dump(template_data, f, indent=4)
-        logger.info(f"Template '{original_template_name}' saved as '{filename}'.")
-        return jsonify({"status": "success", "message": "Template saved.", "template_name": original_template_name, "filename": filename}), 201
-    except IOError as e:
-        logger.error(f"IOError saving template '{filename}': {e}", exc_info=True)
-        return jsonify({"error": f"Could not save template: {str(e)}"}), 500
-    except Exception as e:
-        logger.error(f"Error saving template '{filename}': {e}", exc_info=True)
-        return jsonify({"error": "Server error saving template."}), 500
+    overwrite = data.get('overwrite', False)
+
+    if not original_template_name:
+        return jsonify({"error": "Template name is required."}), 400
+
+    if not field_mappings or not isinstance(field_mappings, list) or len(field_mappings) == 0:
+        return jsonify({"error": "Field mappings are required and cannot be empty."}), 400
+
+    sanitized_name_part = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_template_name)
+    if not sanitized_name_part:
+        logger.warning(f"Template name '{original_template_name}' sanitized to empty. Not saving.")
+        return jsonify({"error": "Invalid template name after sanitization. Please provide a more descriptive name."}), 400
+
+    safe_target_filename = f"{sanitized_name_part}.json"
+    target_file_path = os.path.join(TEMPLATES_DIR, safe_target_filename)
+
+    # Check 1: Exact Original Name Match in a *Different* File
+    if os.path.exists(TEMPLATES_DIR):
+        for existing_s_filename in os.listdir(TEMPLATES_DIR):
+            if not existing_s_filename.endswith(".json") or existing_s_filename == safe_target_filename:
+                continue
+            try:
+                with open(os.path.join(TEMPLATES_DIR, existing_s_filename), 'r', encoding='utf-8') as f:
+                    existing_template_data = json.load(f)
+                if existing_template_data.get('template_name') == original_template_name:
+                    return jsonify({
+                        'status': 'error', 'error_type': 'NAME_ALREADY_EXISTS_IN_OTHER_FILE',
+                        'message': f"A template with the name '{original_template_name}' already exists (saved as '{existing_s_filename}'). Please choose a unique name.",
+                        'conflicting_filename': existing_s_filename
+                    }), 409
+            except (IOError, json.JSONDecodeError) as e:
+                logger.error(f"Error reading/parsing {existing_s_filename} during name conflict check: {e}")
+
+    filename_exists = os.path.exists(target_file_path)
+
+    if filename_exists and not overwrite:
+        existing_internal_name = "N/A"
+        try:
+            with open(target_file_path, 'r', encoding='utf-8') as f:
+                loaded_content = json.load(f)
+            existing_internal_name = loaded_content.get('template_name', 'N/A')
+        except (IOError, json.JSONDecodeError):
+            logger.error(f"Could not read existing template {target_file_path} to get its name during conflict check.")
+
+        return jsonify({
+            'status': 'conflict', 'error_type': 'FILENAME_CLASH',
+            'message': f"A template file that would be named '{safe_target_filename}' already exists (it currently stores a template named '{existing_internal_name}'). Do you want to overwrite it?",
+            'filename': safe_target_filename, 'existing_template_name': existing_internal_name
+        }), 409
+
+    if (filename_exists and overwrite) or (not filename_exists and overwrite):
+        template_data = {
+            "template_name": original_template_name, "filename": safe_target_filename,
+            "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z", "field_mappings": field_mappings
+        }
+        try:
+            with open(target_file_path, 'w', encoding='utf-8') as f:
+                json.dump(template_data, f, indent=4)
+
+            status_code = 200 if filename_exists else 201
+            action_message = "overwritten" if filename_exists else "saved"
+            logger.info(f"Template '{original_template_name}' {action_message} as '{safe_target_filename}'.")
+            return jsonify({
+                "status": "success",
+                "message": f"Template '{original_template_name}' {action_message} successfully.", # Distinct message
+                "template_name": original_template_name, "filename": safe_target_filename
+            }), status_code
+        except IOError as e:
+            logger.error(f"IOError saving/overwriting template '{safe_target_filename}': {e}", exc_info=True)
+            return jsonify({"error": f"Could not save template file: {str(e)}"}), 500
+        except Exception as e:
+            logger.error(f"Unexpected error saving/overwriting template '{safe_target_filename}': {e}", exc_info=True)
+            return jsonify({"error": "An unexpected server error occurred while saving."}), 500
+
+    elif not filename_exists and not overwrite:
+        return jsonify({
+            'status': 'no_conflict_proceed_to_save',
+            'message': 'No conflict found. Template name and filename are available.',
+            'filename': safe_target_filename, 'template_name': original_template_name
+        }), 200
+
+    logger.error(f"Reached unexpected state in /save_template for {original_template_name} / {safe_target_filename} with overwrite={overwrite}")
+    return jsonify({"error": "Unexpected state in save template logic."}), 500
 
 
 @app.route('/list_templates', methods=['GET'])
