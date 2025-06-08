@@ -98,7 +98,16 @@ SUPPORTED_MIME_TYPES = {
     'application/vnd.ms-excel': 'XLS',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
     'text/csv': 'CSV',
-    'text/plain': 'CSV'  # Add text/plain as a CSV type
+    'text/plain': 'CSV',  # Add text/plain as a CSV type
+    'application/octet-stream': 'XLS' # Added for fallback
+}
+
+# Map extensions to our internal type names for fallback
+EXTENSION_TO_TYPE_FALLBACK = {
+    '.csv': 'CSV',
+    '.xls': 'XLS',
+    '.xlsx': 'XLSX',
+    '.pdf': 'PDF'
 }
 
 @app.route('/')
@@ -115,9 +124,9 @@ def manage_preferences_page():
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
-    files = request.files.getlist('files[]')
+    files = request.files.getlist('files[]') # Ensure this matches your frontend key
     results = []
-    uploaded_file_count = 0
+    # uploaded_file_count = 0 # This variable was declared but not used meaningfully, can be removed or used.
 
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -145,20 +154,43 @@ def upload_files():
                 file_storage.save(file_path)
 
                 try:
-                    mime_type = magic.from_file(file_path, mime=True)
-                    logger.info(f"Detected MIME type for {filename}: {mime_type}")
-                    detected_type_name = SUPPORTED_MIME_TYPES.get(mime_type)
+                    raw_mime_type = magic.from_file(file_path, mime=True)
+                    logger.info(f"[UPLOAD_DEBUG] Raw MIME type for {filename}: '{raw_mime_type}'")
                     
-                    # Variable to hold the filename that will actually be processed for headers/data
-                    # Initially the uploaded filename. Can be changed if PDF is converted to CSV.
+                    mime_type = raw_mime_type.lower() if raw_mime_type else None
+                    logger.info(f"[UPLOAD_DEBUG] Normalized (lowercase) MIME type: '{mime_type}'")
+
+                    detected_type_name = SUPPORTED_MIME_TYPES.get(mime_type)
+                    logger.info(f"[UPLOAD_DEBUG] Initial detected_type_name from SUPPORTED_MIME_TYPES: '{detected_type_name}' (for mime_type '{mime_type}')")
+                    
                     effective_filename_for_processing = filename
                     effective_file_path_for_processing = file_path
 
-                    if detected_type_name:
+                    if detected_type_name == 'OCTET_STREAM':
+                        logger.info(f"[UPLOAD_DEBUG] MIME type is application/octet-stream for {filename}. Attempting fallback using file extension.")
+                        _, file_extension = os.path.splitext(filename)
+                        file_extension_lower = file_extension.lower()
+                        logger.info(f"[UPLOAD_DEBUG] File extension: '{file_extension}', Lowercase for fallback: '{file_extension_lower}'")
+                        
+                        fallback_type_name = EXTENSION_TO_TYPE_FALLBACK.get(file_extension_lower)
+                        logger.info(f"[UPLOAD_DEBUG] Fallback type from EXTENSION_TO_TYPE_FALLBACK: '{fallback_type_name}' for ext '{file_extension_lower}'")
+
+                        if fallback_type_name:
+                            logger.info(f"[UPLOAD_DEBUG] Fallback successful: Using type '{fallback_type_name}' for extension '{file_extension_lower}'. Updating detected_type_name.")
+                            detected_type_name = fallback_type_name
+                        else:
+                            logger.warning(f"[UPLOAD_DEBUG] Fallback failed: Extension '{file_extension_lower}' is not recognized for octet-stream. detected_type_name remains 'OCTET_STREAM'.")
+                    
+                    logger.info(f"[UPLOAD_DEBUG] Final detected_type_name after potential fallback: '{detected_type_name}'")
+                    
+                    is_processable_type = detected_type_name and detected_type_name != 'OCTET_STREAM'
+                    logger.info(f"[UPLOAD_DEBUG] Is processable type? {is_processable_type} (based on detected_type_name: '{detected_type_name}')")
+
+                    if is_processable_type:
                         results_entry["file_type"] = detected_type_name
-                        results_entry["success"] = True
+                        results_entry["success"] = True # Mark as success for now, subsequent steps can set to False
                         results_entry["message"] = "Upload and type detection successful."
-                        uploaded_file_count += 1
+                        # uploaded_file_count += 1 # If you intend to use this count
 
                         if detected_type_name == "PDF":
                             try:
@@ -167,91 +199,118 @@ def upload_files():
                                 csv_output_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_output_filename)
                                 
                                 logger.info(f"PDF detected. Attempting to convert '{filename}' to CSV at '{csv_output_path}'.")
-                                extract_tables_from_file(file_path, csv_output_path)
+                                extract_tables_from_file(file_path, csv_output_path) # file_path is original PDF
                                 
                                 if os.path.exists(csv_output_path):
                                     logger.info(f"Successfully converted PDF '{filename}' to CSV: '{csv_output_filename}'.")
                                     effective_file_path_for_processing = csv_output_path
                                     effective_filename_for_processing = csv_output_filename
-                                    results_entry["file_type"] = "CSV" # Treat as CSV from now on
-                                    results_entry["filename"] = csv_output_filename # THIS IS CRUCIAL - update the identifier for the frontend
+                                    results_entry["file_type"] = "CSV" # Treat as CSV
+                                    results_entry["filename"] = csv_output_filename # Update identifier
                                     results_entry["original_pdf_filename"] = file_storage.filename
                                     results_entry["message"] = "PDF successfully converted to CSV and uploaded."
+                                    detected_type_name = "CSV" # Update for header extraction
                                 else:
-                                    logger.warning(f"PDF to CSV conversion for '{filename}' did not produce an output file at '{csv_output_path}'. Proceeding with PDF extraction.")
+                                    logger.warning(f"PDF to CSV conversion for '{filename}' did not produce output. Proceeding with direct PDF extraction.")
                                     # results_entry["filename"] remains original PDF filename
                             except Exception as e_pdf_to_csv:
                                 logger.error(f"Error converting PDF '{filename}' to CSV: {e_pdf_to_csv}", exc_info=True)
                                 results_entry["message"] += f" (Note: PDF to CSV conversion failed: {str(e_pdf_to_csv)})"
                                 # results_entry["filename"] remains original PDF filename
-
-                    else:
-                        results_entry["message"] = f"Unsupported file type: {mime_type}."
-                        results_entry["file_type"] = mime_type
+                    
+                    else: # Not a processable type
+                        final_error_message = f"Unsupported file type (Reported MIME: {raw_mime_type}"
+                        current_file_extension_for_msg = os.path.splitext(filename)[1].lower()
+                        if mime_type == 'application/octet-stream':
+                            if detected_type_name == 'OCTET_STREAM':
+                                final_error_message += f", extension '{current_file_extension_for_msg}' not recognized for fallback"
+                            else:
+                                final_error_message += f", processing error after octet-stream detection (ext: {current_file_extension_for_msg}, final type: {detected_type_name})"
+                        elif not detected_type_name:
+                            final_error_message += ", MIME type not configured as supported"
+                        else:
+                            final_error_message += f", resolved as unprocessable type '{detected_type_name}'"
+                        final_error_message += ")."
+                        
+                        results_entry["message"] = final_error_message
+                        results_entry["file_type"] = raw_mime_type # Report original raw MIME
                         results_entry["success"] = False
-                except magic.MagicException:
-                    results_entry["message"] = "Error detecting file type (file may be corrupted)."
-                    results_entry["file_type"] = "error_detection"
+                
+                except magic.MagicException as e_magic:
+                    logger.error(f"MagicException for {filename}: {e_magic}", exc_info=True)
+                    results_entry["message"] = "Error detecting file type (file may be corrupted or inaccessible)."
+                    results_entry["file_type"] = "error_detection_magic"
                     results_entry["success"] = False
-                except Exception as e_detect:
+                except Exception as e_detect: # Broader exception for other detection phase errors
+                    logger.error(f"Error during file type detection phase for {filename}: {e_detect}", exc_info=True)
                     results_entry["message"] = f"Error during file type detection: {str(e_detect)}"
                     results_entry["file_type"] = "error_detection_general"
                     results_entry["success"] = False
 
-                if results_entry["success"] and results_entry["file_type"] in ["CSV", "XLSX", "XLS", "PDF"]:
-                    # Use the effective_file_path_for_processing and results_entry["file_type"] (which might have changed to CSV)
-                    logger.info(f"Extracting headers for: {results_entry['filename']} (Path: {effective_file_path_for_processing}, Type: {results_entry['file_type']})")
-                    headers_extraction_result = extract_headers(effective_file_path_for_processing, results_entry["file_type"])
+                # Proceed with header extraction only if type detection was successful and type is processable
+                if results_entry["success"] and detected_type_name in ["CSV", "XLSX", "XLS", "PDF"]: # PDF here means direct PDF extraction if conversion failed/skipped
+                    logger.info(f"Extracting headers for: {effective_filename_for_processing} (Path: {effective_file_path_for_processing}, Type: {detected_type_name})")
+                    
+                    # Use 'detected_type_name' which is CSV if PDF was converted, or original PDF type
+                    if detected_type_name == "PDF": # Direct PDF extraction
+                        # effective_file_path_for_processing should be the original PDF path (file_path)
+                        headers_extraction_result = extract_headers_from_pdf_tables(file_path) 
+                    else: # CSV, XLSX, XLS
+                        headers_extraction_result = extract_headers(effective_file_path_for_processing, detected_type_name)
 
-                    if isinstance(headers_extraction_result, list):
+                    if isinstance(headers_extraction_result, list): # Standard header list
                         results_entry["headers"] = headers_extraction_result
                         if headers_extraction_result:
                             mappings = header_mapper.generate_mappings(headers_extraction_result, FIELD_DEFINITIONS)
                             results_entry["field_mappings"] = mappings
-                            logger.info(f"Generated {len(mappings)} field mappings for {filename} (Type: {results_entry['file_type']}).")
-                            results_entry["message"] = "Headers extracted and auto-mapped."
-                        else:
-                            results_entry["message"] += " No headers were found/extracted."
-                    elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result:
+                            logger.info(f"Generated {len(mappings)} mappings for {filename} (Type: {detected_type_name}).")
+                            results_entry["message"] = "Headers extracted and auto-mapped." # Overwrites previous success message
+                        else: # No headers found
+                            results_entry["message"] += " No headers were found/extracted." # Append to existing message
+                            # Consider if this should set success to False for this stage
+                    elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result: # Error from extraction
                         results_entry["success"] = False
                         results_entry["message"] = headers_extraction_result["error"]
-
-                    # If it's still a PDF (meaning conversion didn't happen or failed) AND headers were extracted successfully,
-                    # then cache its table data.
-                    if results_entry["file_type"] == "PDF" and results_entry["success"] and isinstance(headers_extraction_result, list):
-                        logger.info(f"Fetching full PDF context (headers and data_rows) for {results_entry['filename']} for caching (direct PDF path).")
-                        # Use effective_file_path_for_processing which would be the original PDF path here
-                        pdf_full_extraction_info = extract_headers_from_pdf_tables(effective_file_path_for_processing)
-                        if isinstance(pdf_full_extraction_info, dict) and not pdf_full_extraction_info.get("error"):
-                            original_pdf_headers = pdf_full_extraction_info.get('headers')
-                            pdf_table_data_rows = pdf_full_extraction_info.get('data_rows')
-                            if original_pdf_headers is not None and pdf_table_data_rows is not None:
-                                # Cache against the filename known to the frontend (results_entry['filename'])
-                                TEMP_PDF_DATA_FOR_EXTRACTION[results_entry['filename']] = {
-                                    'headers': original_pdf_headers,
-                                    'data_rows': pdf_table_data_rows
-                                }
-                                logger.info(f"Cached 'data_rows' for PDF {results_entry['filename']}. Headers count: {len(original_pdf_headers)}, Data rows count: {len(pdf_table_data_rows)}")
-                            else:
-                                logger.warning(f"Could not cache data_rows for PDF {results_entry['filename']} as headers or data_rows were missing from pdf_full_extraction_info.")
-                        else:
-                            logger.warning(f"Failed to get full PDF context for caching data_rows for {results_entry['filename']}. Error: {pdf_full_extraction_info.get('error') if isinstance(pdf_full_extraction_info, dict) else 'Unknown error'}")
-
-                results.append(results_entry)
-
-            except Exception as e_save:
-                # Ensure filename in results_entry is the original uploaded filename on error
-                current_filename_for_error = file_storage.filename if file_storage else "Unknown"
-                results_entry = {"filename": current_filename_for_error, "success": False, "message": f"Error saving or processing file: {str(e_save)}", "file_type": "error_system", "headers": [], "field_mappings": []}
-                results.append(results_entry)
-
-            # Log with the filename that will be sent to the client (results_entry["filename"])
-            log_message = (f"File: {results_entry.get('filename', 'N/A')}, Status: {'Success' if results_entry.get('success') else 'Failure'}, Type: {results_entry.get('file_type', 'unknown')}, "
-                           f"Message: {results_entry.get('message')}, Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}")
+                    elif isinstance(headers_extraction_result, dict) and "headers" in headers_extraction_result: # PDF extraction dict
+                        # This case is for extract_headers_from_pdf_tables if it returns the dict directly
+                        # And we are processing a PDF directly (not a converted CSV)
+                        pdf_headers = headers_extraction_result.get("headers")
+                        pdf_data_rows = headers_extraction_result.get("data_rows")
+                        if pdf_headers is not None: # Check if headers were actually found
+                           results_entry["headers"] = pdf_headers
+                           if pdf_headers: # If headers list is not empty
+                               mappings = header_mapper.generate_mappings(pdf_headers, FIELD_DEFINITIONS)
+                               results_entry["field_mappings"] = mappings
+                               logger.info(f"Generated {len(mappings)} mappings for PDF {filename}.")
+                               results_entry["message"] = "PDF headers extracted and auto-mapped."
+                               if pdf_data_rows is not None:
+                                   TEMP_PDF_DATA_FOR_EXTRACTION[filename] = { # Cache against original PDF filename
+                                       'headers': pdf_headers,
+                                       'data_rows': pdf_data_rows
+                                   }
+                                   logger.info(f"Cached 'data_rows' for PDF {filename}. Headers: {len(pdf_headers)}, Rows: {len(pdf_data_rows)}")
+                           else: # PDF headers list was empty
+                               results_entry["message"] += " No headers were found in the PDF."
+                        else: # "headers" key was missing or None in PDF extraction result
+                            results_entry["success"] = False
+                            results_entry["message"] = "Error extracting headers from PDF: 'headers' field missing in result."
+                            
+            except Exception as e_save: # Outer try-except for file saving and initial processing
+                logger.error(f"Error saving/processing file {filename}: {e_save}", exc_info=True)
+                # results_entry is already defined, update it
+                results_entry["success"] = False
+                results_entry["message"] = f"Error saving or processing file: {str(e_save)}"
+                results_entry["file_type"] = "error_system"
+            
+            results.append(results_entry)
+            log_message = (f"File: {results_entry.get('filename', 'N/A')}, Status: {'Success' if results_entry.get('success') else 'Failure'}, "
+                           f"Type: {results_entry.get('file_type', 'unknown')}, Msg: {results_entry.get('message')}, "
+                           f"Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}")
             if "original_pdf_filename" in results_entry:
                 log_message += f", OriginalPDF: {results_entry['original_pdf_filename']}"
             logger.info(log_message)
-
+            
+    # logger.info(f"Processed {uploaded_file_count} files successfully out of {len(files)} attempts.") # If using uploaded_file_count
     return jsonify(results)
 
 @app.route('/chatbot_suggest_mapping', methods=['POST'])
