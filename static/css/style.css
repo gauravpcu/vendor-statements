@@ -416,6 +416,24 @@
     background-color: #e0a800; /* Darker amber/yellow */
 }
 
+/* Export to Excel Button Styling */
+.export-to-excel-button {
+    display: block; /* Or inline-block if preferred next to other items */
+    margin: 10px auto; /* Centered with some margin */
+    padding: 8px 15px;
+    font-size: 0.95em;
+    color: #fff;
+    background-color: #198754; /* A different shade of green, e.g., for export actions */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.export-to-excel-button:hover {
+    background-color: #146c43; /* Darker shade for hover */
+}
+
 
 /* Extracted Data Table Styling */
 .extracted-data-container {

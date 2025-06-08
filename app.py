@@ -1,14 +1,16 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 import os
+import io # For in-memory file handling
 import magic
 import logging
 import json
-import datetime # For timestamping templates
-from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables # Ensure this is imported
+import datetime
+import pandas as pd # For Excel export
+from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from header_mapper import generate_mappings
 from chatbot_service import get_mapping_suggestions
-# from werkzeug.utils import secure_filename # Option for more robust filename sanitization
+# from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
