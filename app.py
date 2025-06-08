@@ -185,7 +185,14 @@ def process_file_data_route():
     file_identifier = data.get('file_identifier')
     finalized_mappings = data.get('finalized_mappings')
     file_type = data.get('file_type')
-    if not all([file_identifier, finalized_mappings, file_type]):
+    try:
+        skip_rows = int(data.get('skip_rows', 0))
+        if skip_rows < 0: skip_rows = 0
+    except ValueError:
+        logger.warning(f"Invalid skip_rows value received in /process_file_data: {data.get('skip_rows')}. Defaulting to 0.")
+        skip_rows = 0
+
+    if not all([file_identifier, finalized_mappings, file_type]): # skip_rows is optional, defaults to 0
         return jsonify({"error": "Missing required fields (file_identifier, finalized_mappings, file_type)"}), 400
 
     file_path_on_disk = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
@@ -213,13 +220,23 @@ def process_file_data_route():
                 logger.error(f"PDF context missing data_rows or headers for {file_path_on_disk}.")
                 return jsonify({"error": "Failed to get consistent table data from PDF for extraction."}), 500
 
-        extracted_data_list_or_error = extract_data(
-            file_path_on_disk,
-            file_type,
-            finalized_mappings,
-            pdf_data_rows=pdf_data_rows_for_extraction,
-            pdf_original_headers=pdf_original_headers_for_extraction
-        )
+            # For PDF, skip_rows is not passed to extract_data as it's handled during header/table identification
+            extracted_data_list_or_error = extract_data(
+                file_path_on_disk,
+                file_type,
+                finalized_mappings,
+                pdf_data_rows=pdf_data_rows_for_extraction,
+                pdf_original_headers=pdf_original_headers_for_extraction
+                # skip_rows is NOT passed here for PDF
+            )
+        else:
+            # For CSV/Excel, pass the skip_rows from the request
+            extracted_data_list_or_error = extract_data(
+                file_path_on_disk,
+                file_type,
+                finalized_mappings,
+                skip_rows=skip_rows
+            )
 
         if isinstance(extracted_data_list_or_error, dict) and "error" in extracted_data_list_or_error:
             logger.error(f"Data extraction error for {file_path_on_disk}: {extracted_data_list_or_error['error']}")
@@ -268,6 +285,8 @@ def save_template_route():
     target_file_path = os.path.join(TEMPLATES_DIR, safe_target_filename)
 
     # Check 1: Exact Original Name Match in a *Different* File
+    # This check should ideally happen regardless of the overwrite flag for the current target file,
+    # as it's about the *display name* being unique across all templates.
     if os.path.exists(TEMPLATES_DIR):
         for existing_s_filename in os.listdir(TEMPLATES_DIR):
             if not existing_s_filename.endswith(".json") or existing_s_filename == safe_target_filename:
@@ -302,9 +321,20 @@ def save_template_route():
         }), 409
 
     if (filename_exists and overwrite) or (not filename_exists and overwrite):
+        skip_rows = data.get('skip_rows', 0)
+        try: # Ensure skip_rows is a non-negative integer
+            skip_rows = int(skip_rows)
+            if skip_rows < 0: skip_rows = 0
+        except (ValueError, TypeError):
+            skip_rows = 0
+            logger.warning(f"Invalid skip_rows value received for template '{original_template_name}', defaulting to 0.")
+
         template_data = {
-            "template_name": original_template_name, "filename": safe_target_filename,
-            "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z", "field_mappings": field_mappings
+            "template_name": original_template_name,
+            "filename": safe_target_filename,
+            "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "field_mappings": field_mappings,
+            "skip_rows": skip_rows # Add skip_rows to the template data
         }
         try:
             with open(target_file_path, 'w', encoding='utf-8') as f:
@@ -477,6 +507,66 @@ def get_learned_preferences_route(vendor_name):
     except Exception as e:
         logger.error(f"Unexpected error for '{original_vendor_name}' ({preference_file_path}): {e}", exc_info=True)
         return jsonify({"error": "Unexpected server error retrieving preferences."}), 500
+
+@app.route('/re_extract_headers', methods=['POST'])
+def re_extract_headers_route():
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "error": "No data provided"}), 400
+
+    file_identifier = data.get('file_identifier')
+    file_type = data.get('file_type')
+    try:
+        skip_rows = int(data.get('skip_rows', 0))
+        if skip_rows < 0: skip_rows = 0 # Ensure non-negative
+    except ValueError:
+        return jsonify({"success": False, "error": "Invalid skip_rows value, must be an integer."}), 400
+
+
+    if not file_identifier or not file_type:
+        missing_fields = []
+        if not file_identifier: missing_fields.append('file_identifier')
+        if not file_type: missing_fields.append('file_type')
+        return jsonify({"success": False, "error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+    if file_type not in ["CSV", "XLSX", "XLS"]: # Only applicable to these types
+        return jsonify({"success": False, "error": f"Re-extracting headers with skip_rows is not applicable for file type: {file_type}."}), 400
+
+    file_path_on_disk = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
+    if not os.path.exists(file_path_on_disk):
+        if not os.path.exists(file_identifier): # Check if file_identifier itself is a full path
+            logger.error(f"File not found for re-extracting headers: {file_identifier}")
+            return jsonify({"success": False, "error": f"File not found: {file_identifier}"}), 404
+        file_path_on_disk = file_identifier
+
+    logger.info(f"Re-extracting headers for file: {file_path_on_disk}, type: {file_type}, skipping: {skip_rows} rows.")
+
+    try:
+        new_headers_or_error = extract_headers(file_path_on_disk, file_type, skip_rows=skip_rows)
+
+        if isinstance(new_headers_or_error, dict) and "error" in new_headers_or_error:
+            logger.error(f"Error re-extracting headers for {file_identifier}: {new_headers_or_error['error']}")
+            return jsonify({'success': False, 'error': new_headers_or_error['error'], 'headers': [], 'field_mappings': []}), 400 # Or 500 if server-side
+
+        new_headers = new_headers_or_error # It's a list if no error
+
+        if not new_headers: # Empty list
+            return jsonify({'success': True, 'message': 'No headers found with the specified skip_rows.', 'headers': [], 'field_mappings': []})
+
+        # Successfully got new headers, now generate initial mappings for them
+        initial_mappings = generate_mappings(new_headers, FIELD_DEFINITIONS)
+
+        return jsonify({
+            'success': True,
+            'headers': new_headers,
+            'field_mappings': initial_mappings,
+            'message': f'Headers re-extracted successfully, skipping first {skip_rows} row(s).'
+        })
+
+    except Exception as e:
+        logger.error(f"Unexpected error in /re_extract_headers for {file_identifier}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "An internal server error occurred while re-extracting headers."}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

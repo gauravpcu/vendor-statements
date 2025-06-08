@@ -537,6 +537,49 @@
     font-size: 0.9em;
 }
 
+/* Skip Rows UI Styling */
+.skip-rows-container {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Spacing between elements */
+    margin-top: 10px;
+    margin-bottom: 5px;
+    padding: 8px;
+    background-color: #f9f9f9; /* Slightly different background */
+    border: 1px solid #eee;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.skip-rows-container label {
+    font-weight: normal; /* Match vendor name label */
+    color: #333;
+}
+
+.skip-rows-input {
+    width: 60px; /* Keep it small */
+    padding: 5px 7px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em; /* Relative to container font-size */
+}
+
+.reload-headers-button {
+    padding: 5px 10px;
+    font-size: 1em; /* Relative to container font-size */
+    color: #fff;
+    background-color: #007bff; /* Primary button color */
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.reload-headers-button:hover {
+    background-color: #0056b3;
+}
+
+
 /* Remember Mapping Prompt Styling */
 .remember-mapping-prompt {
     display: block; /* Take its own line below the dropdown */

@@ -3,55 +3,62 @@ import pdfplumber
 import logging
 from PIL import Image
 import pytesseract
-from pytesseract import Output as PytesseractOutput # Import Output for image_to_data
+from pytesseract import Output as PytesseractOutput
 from pdf2image import convert_from_path, pdfinfo_from_path
 
 logger = logging.getLogger('upload_history')
 
-def get_headers_from_csv(file_path):
+def get_headers_from_csv(file_path, skip_rows=0):
     """
-    Reads a CSV file and returns its headers.
+    Reads a CSV file and returns its headers, skipping specified number of rows.
     """
     try:
-        df = pd.read_csv(file_path, nrows=0) # Read only headers by getting 0 rows
-        return df.columns.tolist()
-    except pd.errors.EmptyDataError:
-        return {"error": "The CSV file is empty."}
+        # nrows=0 should read no data rows, but infer columns from the first non-skipped line
+        df_header = pd.read_csv(file_path, skiprows=skip_rows, nrows=0)
+        headers = df_header.columns.tolist()
+        if not headers: # If skiprows resulted in reading an empty part of the file or beyond content
+             logger.warning(f"No headers found in CSV '{file_path}' after skipping {skip_rows} rows.")
+             return [] # Return empty list, not an error, to signify no headers found at that position
+        return headers
+    except pd.errors.EmptyDataError: # This might happen if skip_rows is beyond the file content
+        logger.warning(f"EmptyDataError for CSV '{file_path}' after skipping {skip_rows} rows. Likely skipped too many rows.")
+        return [] # No headers found
     except Exception as e:
+        logger.error(f"Error parsing CSV '{file_path}' with skip_rows={skip_rows}: {e}", exc_info=True)
         return {"error": f"Error parsing CSV: {str(e)}"}
 
-def get_headers_from_excel(file_path):
+def get_headers_from_excel(file_path, skip_rows=0):
     """
-    Reads an Excel file (first sheet) and returns its headers.
+    Reads an Excel file (first sheet) and returns its headers, skipping specified number of rows.
     """
     try:
-        # For Excel, pandas might need to read some data to find headers if they are not strictly on row 0.
-        # Using nrows=0 might not always work as expected if the file has merged cells or specific formatting.
-        # Reading the first row of data is generally safer for header detection.
-        df = pd.read_excel(file_path, sheet_name=0, nrows=1) # Read first data row to get headers
-        if df.empty and not pd.read_excel(file_path, sheet_name=0, header=None).empty:
-             # If reading 1 row gives an empty df, but the sheet is not empty,
-             # it might mean the first row is empty but headers are present.
-             # Try to get headers without assuming data rows.
-             df_header_only = pd.read_excel(file_path, sheet_name=0)
-             return df_header_only.columns.tolist()
-        return df.columns.tolist()
-    except pd.errors.EmptyDataError: # Less common for Excel, but good to have
-        return {"error": "The Excel sheet is empty or the first sheet has no data."}
+        # nrows=0 should get columns from the first non-skipped row
+        df_header = pd.read_excel(file_path, sheet_name=0, skiprows=skip_rows, nrows=0)
+        headers = df_header.columns.tolist()
+        if not headers: # If skiprows resulted in reading an empty part of the file
+            logger.warning(f"No headers found in Excel '{file_path}' after skipping {skip_rows} rows.")
+            return []
+        return headers
+    except pd.errors.EmptyDataError: # xlrd can raise this, or if sheet is truly empty after skip
+        logger.warning(f"EmptyDataError for Excel '{file_path}' after skipping {skip_rows} rows.")
+        return []
     except Exception as e:
-        # xlrd.biffh.XLRDError can happen for corrupted .xls files
-        # zipfile.BadZipFile for corrupted .xlsx
+        # Handle specific exceptions like XLRDError for .xls if necessary, or BadZipFile for .xlsx
+        logger.error(f"Error parsing Excel '{file_path}' with skip_rows={skip_rows}: {e}", exc_info=True)
         return {"error": f"Error parsing Excel: {str(e)}"}
 
-def extract_headers(file_path, file_type):
+def extract_headers(file_path, file_type, skip_rows=0):
     """
-    Wrapper function to extract headers based on file type.
+    Wrapper function to extract headers based on file type, with optional row skipping for CSV/Excel.
     """
     if file_type == "CSV":
-        return get_headers_from_csv(file_path)
+        return get_headers_from_csv(file_path, skip_rows=skip_rows)
     elif file_type in ["XLSX", "XLS"]:
-        return get_headers_from_excel(file_path)
+        return get_headers_from_excel(file_path, skip_rows=skip_rows)
     elif file_type == "PDF":
+        # skip_rows is not applicable to PDF table extraction logic currently
+        if skip_rows > 0:
+            logger.info(f"skip_rows parameter is not used for PDF header extraction. Processing PDF '{file_path}' from the beginning.")
         pdf_extraction_result = extract_headers_from_pdf_tables(file_path)
         if isinstance(pdf_extraction_result, dict) and "error" in pdf_extraction_result:
             return pdf_extraction_result # Propagate error
@@ -82,10 +89,11 @@ if __name__ == '__main__':
     # print(f"PDF Info: {extract_headers('dummy.pdf', 'PDF')}")
     pass
 
-def extract_data(file_path, file_type, finalized_mappings, pdf_data_rows=None, pdf_original_headers=None):
+def extract_data(file_path, file_type, finalized_mappings, pdf_data_rows=None, pdf_original_headers=None, skip_rows=0):
     """
     Reads data from a file, filters, and renames columns based on finalized mappings.
     For PDFs, uses provided pdf_data_rows and pdf_original_headers.
+    For CSV/Excel, uses skip_rows to ignore initial rows before header.
     Returns a list of dictionaries, where each dictionary is a row, or an error dict.
     """
     try:
@@ -104,15 +112,20 @@ def extract_data(file_path, file_type, finalized_mappings, pdf_data_rows=None, p
             # Ensure headers are unique if pandas is to use them. If not, this might cause issues.
             # A more robust way would be to handle duplicate headers here if they are possible from pdfplumber extraction.
             df = pd.DataFrame(pdf_data_rows, columns=pdf_original_headers)
-            if df.empty and pdf_original_headers: # DataFrame is empty but headers were provided (e.g. table had only header row)
-                logger.info(f"PDF table for {file_path} contained only headers or no data rows after header.")
+            # It's possible pdf_original_headers is empty if OCR found rows but no distinct header pattern.
+            # pd.DataFrame will create default 0,1,2... headers in that case.
+            # The mapping logic later (original_header in actual_file_headers_set) should handle this.
+            if df.empty and pdf_original_headers:
+                logger.info(f"PDF table for {file_path} (using provided rows/headers) was empty or only headers.")
                 return []
 
-
         elif file_type == "CSV":
-            df = pd.read_csv(file_path)
+            # For CSV, the header for data extraction is determined by skip_rows.
+            # Pandas will use the first row after skipping as the header.
+            df = pd.read_csv(file_path, skiprows=skip_rows)
         elif file_type in ["XLSX", "XLS"]:
-            df = pd.read_excel(file_path, sheet_name=0)
+            # Similarly for Excel.
+            df = pd.read_excel(file_path, sheet_name=0, skiprows=skip_rows)
         else:
             return {"error": f"Unsupported file type for data extraction: {file_type}"}
 
