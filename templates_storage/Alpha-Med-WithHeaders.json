@@ -1,0 +1,36 @@
+{
+    "template_name": "Alpha-Med-WithHeaders",
+    "filename": "Alpha-Med-WithHeaders.json",
+    "creation_timestamp": "2025-06-08T15:25:10.416188Z",
+    "field_mappings": [
+        {
+            "original_header": "Account set",
+            "mapped_field": "AccountNumber"
+        },
+        {
+            "original_header": "Name",
+            "mapped_field": "FacilityName"
+        },
+        {
+            "original_header": "Document",
+            "mapped_field": "InvoiceID"
+        },
+        {
+            "original_header": "Date",
+            "mapped_field": "InvoiceDate"
+        },
+        {
+            "original_header": "Current",
+            "mapped_field": "TotalAmount"
+        },
+        {
+            "original_header": "30 Days",
+            "mapped_field": "PaymentTerms"
+        },
+        {
+            "original_header": "Balance",
+            "mapped_field": "TotalAmount"
+        }
+    ],
+    "skip_rows": 4
+}

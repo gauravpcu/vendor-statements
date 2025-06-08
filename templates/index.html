@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>File Upload</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -50,7 +53,7 @@
         // This ensures FIELD_DEFINITIONS is defined before other scripts that might use it.
         const FIELD_DEFINITIONS = {{ field_definitions_json | safe }};
     </script>
-    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/chatbot.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/upload.js') }}?v={{ range(1, 1000000000) | random }}"></script>
+    <script src="{{ url_for('static', filename='js/chatbot.js') }}?v={{ range(1, 1000000000) | random }}"></script>
 </body>
 </html>

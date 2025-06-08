@@ -2,19 +2,32 @@ import os
 import json
 import logging
 from azure_openai_client import client as azure_oai_client, azure_openai_configured, AZURE_OAI_DEPLOYMENT_NAME
-# Removed: from app import FIELD_DEFINITIONS
 
 logger = logging.getLogger('upload_history')
 
-def get_mapping_suggestions(original_header, current_mapped_field, all_field_definitions):
+FIELD_DEFINITIONS_CS = {} # Global for chatbot service
+
+def initialize_chatbot_service(field_definitions):
+    """Initialize the chatbot_service with field definitions"""
+    global FIELD_DEFINITIONS_CS
+    FIELD_DEFINITIONS_CS = field_definitions
+    logger.info(f"chatbot_service initialized with {len(FIELD_DEFINITIONS_CS)} field definitions.")
+
+def get_mapping_suggestions(original_header, current_mapped_field, all_field_definitions=None):
     """
     Generates mapping suggestions for a given original header.
     Uses Azure OpenAI if configured, otherwise falls back to alias-based logic.
+    Uses the globally initialized FIELD_DEFINITIONS_CS if all_field_definitions is not provided.
     """
+    target_definitions = all_field_definitions if all_field_definitions is not None else FIELD_DEFINITIONS_CS
+    if not target_definitions:
+        logger.error("get_mapping_suggestions called before FIELD_DEFINITIONS_CS was initialized or provided.")
+        return []
+    
     suggestions = []
 
     if azure_openai_configured and azure_oai_client:
-        standard_field_names = list(all_field_definitions.keys())
+        standard_field_names = list(target_definitions.keys())
         prompt = f"""Context: A user is reviewing field mappings for a document. For the original header "{original_header}", it is currently mapped to "{current_mapped_field}". The user is requesting alternative suggestions.
 Instruction: Please suggest 2-3 alternative standard field names from the following list that "{original_header}" could map to. Exclude "{current_mapped_field}" from your suggestions. For each suggestion, provide a brief reason (10-15 words).
 Standard Field Names: {json.dumps(standard_field_names)}
@@ -23,15 +36,18 @@ If no other suitable suggestions are found from the list, return an empty JSON a
 """
         try:
             logger.info(f"Requesting mapping suggestions from Azure OpenAI for header: '{original_header}', current map: '{current_mapped_field}'")
-            response = azure_oai_client.completions.create( # Or chat.completions.create if using a chat model
+            response = azure_oai_client.chat.completions.create( # Use chat.completions.create
                 model=AZURE_OAI_DEPLOYMENT_NAME,
-                prompt=prompt,
-                max_tokens=150, # Increased to allow for a few suggestions with reasons
-                temperature=0.2, # Slightly higher for more varied suggestions but still factual
-                stop=None # Could add "]" as a stop token if issues with JSON completion
+                messages=[ # Chat models expect a messages array
+                    {"role": "system", "content": "You are an AI assistant helping with field mapping."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150,
+                temperature=0.2,
+                stop=None
             )
 
-            raw_response_text = response.choices[0].text.strip()
+            raw_response_text = response.choices[0].message.content.strip() # Access content from message
             logger.info(f"Raw Azure OpenAI response for suggestions: {raw_response_text}")
 
             # Try to parse the JSON response
@@ -64,11 +80,11 @@ If no other suitable suggestions are found from the list, return an empty JSON a
     logger.info(f"Using fallback logic for suggestions for header: '{original_header}'")
     fallback_suggestions = []
     original_header_lower = original_header.lower()
-
-    # Simple keyword matching for fallback
     original_header_keywords = set(original_header_lower.replace("_", " ").replace("-", " ").split())
 
-    for field_name, aliases in all_field_definitions.items():
+    for field_name, details in target_definitions.items(): # Use target_definitions
+        # Ensure aliases are fetched correctly from the details dictionary
+        aliases = details.get('aliases', []) if isinstance(details, dict) else []
         if field_name == current_mapped_field:
             continue # Skip the currently mapped field
 
@@ -124,24 +140,27 @@ if __name__ == '__main__':
     test_header = "Invoice Dt"
     current_map = "InvoiceDate"
     print(f"\nTesting suggestions for: '{test_header}' (currently '{current_map}')")
-    suggs = get_mapping_suggestions(test_header, current_map, FIELD_DEFINITIONS_MOCK)
+    initialize_chatbot_service(FIELD_DEFINITIONS_MOCK) # Initialize before test
+    suggs = get_mapping_suggestions(test_header, current_map)
     print("Suggestions:", json.dumps(suggs, indent=2))
 
     test_header_2 = "Total Val"
     current_map_2 = "SubTotal" # Example, user wants alternatives for "Total Val" if not SubTotal
     print(f"\nTesting suggestions for: '{test_header_2}' (currently '{current_map_2}')")
-    suggs_2 = get_mapping_suggestions(test_header_2, current_map_2, FIELD_DEFINITIONS_MOCK)
+    suggs_2 = get_mapping_suggestions(test_header_2, current_map_2)
     print("Suggestions:", json.dumps(suggs_2, indent=2))
 
     test_header_3 = "Supplier Company"
     current_map_3 = "InvoiceID"
     print(f"\nTesting suggestions for: '{test_header_3}' (currently '{current_map_3}')")
-    suggs_3 = get_mapping_suggestions(test_header_3, current_map_3, FIELD_DEFINITIONS_MOCK)
+    suggs_3 = get_mapping_suggestions(test_header_3, current_map_3)
     print("Suggestions:", json.dumps(suggs_3, indent=2))
 
     # Test case where no suggestions should be found easily (apart from current_map)
     test_header_4 = "Unique Header XYZ"
     current_map_4 = "InvoiceID"
     print(f"\nTesting suggestions for: '{test_header_4}' (currently '{current_map_4}')")
-    suggs_4 = get_mapping_suggestions(test_header_4, current_map_4, FIELD_DEFINITIONS_MOCK)
+    # Pass the mock definitions to the test call
+    initialize_chatbot_service(FIELD_DEFINITIONS_MOCK) # Initialize before test
+    suggs_4 = get_mapping_suggestions(test_header_4, current_map_4)
     print("Suggestions:", json.dumps(suggs_4, indent=2))

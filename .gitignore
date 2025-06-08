@@ -1,5 +1,29 @@
-# Ignore environment variables file
+# Ignore uploaded files
+uploads/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Flask static file cache
+.webassets-cache
+
+# Environment variables
 .env
+
+# VS Code settings
+.vscode/
+
+# macOS
+.DS_Store
+
+# Log files
+*.log
+
+# Database files
+*.db
+*.sqlite
 
 # Python virtual environment
 venv/
@@ -20,11 +44,3 @@ __pycache__/
 # learned_preferences_storage/
 # If these directories should contain default examples to be versioned, then remove above lines.
 # Given they store user-generated content, they are good candidates for .gitignore.
-
-# Log files
-*.log
-upload_history.log
-
-# OS-specific files
-.DS_Store
-Thumbs.db
