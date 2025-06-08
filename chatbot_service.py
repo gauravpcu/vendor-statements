@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from azure_openai_client import client as azure_oai_client, azure_openai_configured, AZURE_OAI_DEPLOYMENT_NAME
-from app import FIELD_DEFINITIONS # Assuming FIELD_DEFINITIONS is accessible
+# Removed: from app import FIELD_DEFINITIONS
 
 logger = logging.getLogger('upload_history')
 
@@ -111,18 +111,14 @@ if __name__ == '__main__':
     # For standalone testing, you might mock FIELD_DEFINITIONS or ensure app context is available.
     logging.basicConfig(level=logging.INFO)
 
-    # Mock FIELD_DEFINITIONS for testing
-    if not FIELD_DEFINITIONS:
-        FIELD_DEFINITIONS_MOCK = {
-            "InvoiceID": ["Invoice ID", "Invoice Number", "Inv No", "Reference"],
-            "InvoiceDate": ["Invoice Date", "Date Issued", "Inv Date", "Date"],
-            "TotalAmount": ["Total Amount", "Amount Due", "Total", "Net Amount"],
-            "VendorName": ["Vendor", "Supplier", "Seller Name"]
-        }
-        print("Using MOCKED FIELD_DEFINITIONS for chatbot_service.py standalone test.")
-    else:
-        FIELD_DEFINITIONS_MOCK = FIELD_DEFINITIONS
-        print("Using FIELD_DEFINITIONS from app.py for chatbot_service.py standalone test.")
+    # Mock FIELD_DEFINITIONS for standalone testing as it's no longer globally imported
+    FIELD_DEFINITIONS_MOCK = {
+        "InvoiceID": {"aliases": ["Invoice ID", "Invoice Number", "Inv No", "Reference"], "description": "...", "expected_type": "string"},
+        "InvoiceDate": {"aliases": ["Invoice Date", "Date Issued", "Inv Date", "Date"], "description": "...", "expected_type": "date"},
+        "TotalAmount": {"aliases": ["Total Amount", "Amount Due", "Total", "Net Amount"], "description": "...", "expected_type": "currency"},
+        "VendorName": {"aliases": ["Vendor", "Supplier", "Seller Name"], "description": "...", "expected_type": "string"}
+    }
+    print("Using MOCKED FIELD_DEFINITIONS for chatbot_service.py standalone test, as global import from app.py is removed.")
 
 
     test_header = "Invoice Dt"

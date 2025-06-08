@@ -1,15 +1,16 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os
-import io # For in-memory file handling
+import io
 import magic
 import logging
 import json
 import datetime
-import pandas as pd # For Excel export
+import pandas as pd
 from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from header_mapper import generate_mappings
 from chatbot_service import get_mapping_suggestions
+from data_validator import validate_uniqueness, validate_invoice_via_api # Import new validation functions
 # from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -17,6 +18,10 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB limit
 TEMPLATES_DIR = "templates_storage"
 LEARNED_PREFERENCES_DIR = "learned_preferences_storage"
+
+# Load external API configs
+app.config['INVOICE_VALIDATION_API_URL'] = os.getenv('INVOICE_VALIDATION_API_URL')
+app.config['INVOICE_VALIDATION_API_KEY'] = os.getenv('INVOICE_VALIDATION_API_KEY')
 
 
 # --- Field Definitions ---
@@ -72,6 +77,11 @@ try:
         logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
 except Exception as e:
     logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+
+# Log warning for external Invoice Validation API if URL is not set
+if not app.config['INVOICE_VALIDATION_API_URL']:
+    logger.warning("INVOICE_VALIDATION_API_URL is not set in environment variables. External invoice validation will be disabled.")
+
 
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',

@@ -434,6 +434,56 @@
     background-color: #146c43; /* Darker shade for hover */
 }
 
+/* Run Advanced Validations Button Styling */
+.run-advanced-validations-button {
+    display: block;
+    margin: 10px auto;
+    padding: 8px 15px;
+    font-size: 0.95em;
+    color: #fff;
+    background-color: #fd7e14; /* Orange color for validation action */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.run-advanced-validations-button:hover {
+    background-color: #e66b00; /* Darker orange */
+}
+
+/* Advanced Validation Highlight Styling */
+.extracted-data-table td.adv-validation-error {
+    background-color: #ffcccc; /* More prominent red for advanced errors */
+    /* border: 1px solid #cc0000 !important; */
+    outline: 1px dashed #cc0000; /* Dashed outline to differentiate */
+    outline-offset: -1px;
+}
+
+.extracted-data-table td.adv-validation-warning {
+    background-color: #fff8cc; /* More prominent yellow for advanced warnings */
+    /* border: 1px solid #cccc00 !important; */
+    outline: 1px dashed #b3b300;
+    outline-offset: -1px;
+}
+
+/* Advanced Validation Tooltip Styling */
+#advanced-validation-tooltip {
+    position: absolute;
+    background-color: #444; /* Darker tooltip for advanced messages */
+    color: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 0.9em;
+    z-index: 1020; /* Ensure it's above other elements, including other tooltips */
+    max-width: 350px;
+    text-align: left;
+    white-space: pre-line;
+    border: 1px solid #222;
+}
+/* .tooltip-hidden and .tooltip-visible are already defined and can be reused if generic enough,
+   or create specific ones if needed. Assuming generic is fine. */
+
 
 /* Extracted Data Table Styling */
 .extracted-data-container {
