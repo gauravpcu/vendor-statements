@@ -11,6 +11,7 @@ from azure_openai_client import test_azure_openai_connection, azure_openai_confi
 from data_validator import validate_uniqueness, validate_invoice_via_api # Import new validation functions
 # from werkzeug.utils import secure_filename
 import csv
+from pdftocsv import extract_tables_from_file # Added for PDF to CSV conversion
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -96,7 +97,8 @@ SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',
     'application/vnd.ms-excel': 'XLS',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-    'text/csv': 'CSV'
+    'text/csv': 'CSV',
+    'text/plain': 'CSV'  # Add text/plain as a CSV type
 }
 
 @app.route('/')
@@ -144,12 +146,45 @@ def upload_files():
 
                 try:
                     mime_type = magic.from_file(file_path, mime=True)
+                    logger.info(f"Detected MIME type for {filename}: {mime_type}")
                     detected_type_name = SUPPORTED_MIME_TYPES.get(mime_type)
+                    
+                    # Variable to hold the filename that will actually be processed for headers/data
+                    # Initially the uploaded filename. Can be changed if PDF is converted to CSV.
+                    effective_filename_for_processing = filename
+                    effective_file_path_for_processing = file_path
+
                     if detected_type_name:
                         results_entry["file_type"] = detected_type_name
                         results_entry["success"] = True
                         results_entry["message"] = "Upload and type detection successful."
                         uploaded_file_count += 1
+
+                        if detected_type_name == "PDF":
+                            try:
+                                pdf_filename_base = os.path.splitext(filename)[0]
+                                csv_output_filename = f"{pdf_filename_base}-converted.csv"
+                                csv_output_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_output_filename)
+                                
+                                logger.info(f"PDF detected. Attempting to convert '{filename}' to CSV at '{csv_output_path}'.")
+                                extract_tables_from_file(file_path, csv_output_path)
+                                
+                                if os.path.exists(csv_output_path):
+                                    logger.info(f"Successfully converted PDF '{filename}' to CSV: '{csv_output_filename}'.")
+                                    effective_file_path_for_processing = csv_output_path
+                                    effective_filename_for_processing = csv_output_filename
+                                    results_entry["file_type"] = "CSV" # Treat as CSV from now on
+                                    results_entry["filename"] = csv_output_filename # THIS IS CRUCIAL - update the identifier for the frontend
+                                    results_entry["original_pdf_filename"] = file_storage.filename
+                                    results_entry["message"] = "PDF successfully converted to CSV and uploaded."
+                                else:
+                                    logger.warning(f"PDF to CSV conversion for '{filename}' did not produce an output file at '{csv_output_path}'. Proceeding with PDF extraction.")
+                                    # results_entry["filename"] remains original PDF filename
+                            except Exception as e_pdf_to_csv:
+                                logger.error(f"Error converting PDF '{filename}' to CSV: {e_pdf_to_csv}", exc_info=True)
+                                results_entry["message"] += f" (Note: PDF to CSV conversion failed: {str(e_pdf_to_csv)})"
+                                # results_entry["filename"] remains original PDF filename
+
                     else:
                         results_entry["message"] = f"Unsupported file type: {mime_type}."
                         results_entry["file_type"] = mime_type
@@ -164,7 +199,9 @@ def upload_files():
                     results_entry["success"] = False
 
                 if results_entry["success"] and results_entry["file_type"] in ["CSV", "XLSX", "XLS", "PDF"]:
-                    headers_extraction_result = extract_headers(file_path, results_entry["file_type"])
+                    # Use the effective_file_path_for_processing and results_entry["file_type"] (which might have changed to CSV)
+                    logger.info(f"Extracting headers for: {results_entry['filename']} (Path: {effective_file_path_for_processing}, Type: {results_entry['file_type']})")
+                    headers_extraction_result = extract_headers(effective_file_path_for_processing, results_entry["file_type"])
 
                     if isinstance(headers_extraction_result, list):
                         results_entry["headers"] = headers_extraction_result
@@ -179,34 +216,40 @@ def upload_files():
                         results_entry["success"] = False
                         results_entry["message"] = headers_extraction_result["error"]
 
-                    # If PDF and headers were extracted successfully, cache data_rows for later use in /process_file_data
+                    # If it's still a PDF (meaning conversion didn't happen or failed) AND headers were extracted successfully,
+                    # then cache its table data.
                     if results_entry["file_type"] == "PDF" and results_entry["success"] and isinstance(headers_extraction_result, list):
-                        # Call extract_headers_from_pdf_tables again to get the full context including data_rows
-                        # This is less ideal than extract_headers returning everything, but avoids major refactor of extract_headers now.
-                        logger.info(f"Fetching full PDF context (headers and data_rows) for {filename} for caching.")
-                        pdf_full_extraction_info = extract_headers_from_pdf_tables(file_path)
+                        logger.info(f"Fetching full PDF context (headers and data_rows) for {results_entry['filename']} for caching (direct PDF path).")
+                        # Use effective_file_path_for_processing which would be the original PDF path here
+                        pdf_full_extraction_info = extract_headers_from_pdf_tables(effective_file_path_for_processing)
                         if isinstance(pdf_full_extraction_info, dict) and not pdf_full_extraction_info.get("error"):
                             original_pdf_headers = pdf_full_extraction_info.get('headers')
                             pdf_table_data_rows = pdf_full_extraction_info.get('data_rows')
                             if original_pdf_headers is not None and pdf_table_data_rows is not None:
-                                TEMP_PDF_DATA_FOR_EXTRACTION[filename] = {
+                                # Cache against the filename known to the frontend (results_entry['filename'])
+                                TEMP_PDF_DATA_FOR_EXTRACTION[results_entry['filename']] = {
                                     'headers': original_pdf_headers,
                                     'data_rows': pdf_table_data_rows
                                 }
-                                logger.info(f"Cached 'data_rows' for PDF {filename}. Headers count: {len(original_pdf_headers)}, Data rows count: {len(pdf_table_data_rows)}")
+                                logger.info(f"Cached 'data_rows' for PDF {results_entry['filename']}. Headers count: {len(original_pdf_headers)}, Data rows count: {len(pdf_table_data_rows)}")
                             else:
-                                logger.warning(f"Could not cache data_rows for PDF {filename} as headers or data_rows were missing from pdf_full_extraction_info.")
+                                logger.warning(f"Could not cache data_rows for PDF {results_entry['filename']} as headers or data_rows were missing from pdf_full_extraction_info.")
                         else:
-                            logger.warning(f"Failed to get full PDF context for caching data_rows for {filename}. Error: {pdf_full_extraction_info.get('error') if isinstance(pdf_full_extraction_info, dict) else 'Unknown error'}")
+                            logger.warning(f"Failed to get full PDF context for caching data_rows for {results_entry['filename']}. Error: {pdf_full_extraction_info.get('error') if isinstance(pdf_full_extraction_info, dict) else 'Unknown error'}")
 
                 results.append(results_entry)
 
             except Exception as e_save:
-                results_entry = {"filename": filename, "success": False, "message": f"Error saving or processing file: {str(e_save)}", "file_type": "error_system", "headers": [], "field_mappings": []}
+                # Ensure filename in results_entry is the original uploaded filename on error
+                current_filename_for_error = file_storage.filename if file_storage else "Unknown"
+                results_entry = {"filename": current_filename_for_error, "success": False, "message": f"Error saving or processing file: {str(e_save)}", "file_type": "error_system", "headers": [], "field_mappings": []}
                 results.append(results_entry)
 
-            log_message = (f"File: {filename}, Status: {'Success' if results_entry.get('success') else 'Failure'}, Type: {results_entry.get('file_type', 'unknown')}, "
+            # Log with the filename that will be sent to the client (results_entry["filename"])
+            log_message = (f"File: {results_entry.get('filename', 'N/A')}, Status: {'Success' if results_entry.get('success') else 'Failure'}, Type: {results_entry.get('file_type', 'unknown')}, "
                            f"Message: {results_entry.get('message')}, Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}")
+            if "original_pdf_filename" in results_entry:
+                log_message += f", OriginalPDF: {results_entry['original_pdf_filename']}"
             logger.info(log_message)
 
     return jsonify(results)
@@ -279,10 +322,9 @@ def process_file_data_route():
     if not file_identifier:
         logger.warning("/process_file_data: Missing 'file_identifier'.")
         return jsonify({"error": "Missing required field: file_identifier"}), 400
-    if not finalized_mappings:
-        # Allow empty list for finalized_mappings if user intends to map nothing, but log it.
-        logger.warning(f"/process_file_data: 'finalized_mappings' is missing or empty for '{file_identifier}'. Proceeding with empty mappings.")
-        finalized_mappings = [] # Ensure it's an empty list if None or missing
+    if finalized_mappings is None: # Check for None specifically, allow empty list
+        logger.warning(f"/process_file_data: 'finalized_mappings' is missing for '{file_identifier}'. Proceeding with empty mappings.")
+        finalized_mappings = [] 
     if not file_type:
         logger.warning("/process_file_data: Missing 'file_type'.")
         return jsonify({"error": "Missing required field: file_type"}), 400
@@ -337,7 +379,7 @@ def process_file_data_route():
             return jsonify(extracted_data_list_or_error), 400
         
         num_records = len(extracted_data_list_or_error) if isinstance(extracted_data_list_or_error, list) else 0
-        logger.info(f"/process_file_data: Successfully processed '{file_path_on_disk}'. Extracted {num_records} records.")
+        logger.info(f"/process_file_data: Successfully processed '{file_path_on_disk}'. Extracted {num_records} records.") # Corrected f-string
         
         # Sanitize data before jsonify
         sanitized_data = sanitize_data_for_json(extracted_data_list_or_error)
@@ -426,6 +468,8 @@ def save_template_route():
                     }), 409 # HTTP 409 Conflict
             except (IOError, json.JSONDecodeError) as e:
                 logger.error(f"/save_template: Error reading/parsing '{existing_s_filename}' during name conflict check: {e}")
+                # Optionally, decide if this error should halt the process or just be logged
+                # For now, it logs and continues, meaning a potential conflict might be missed if a file is unreadable
 
     filename_exists = os.path.exists(target_file_path)
     logger.info(f"/save_template: Filename '{safe_target_filename}' exists: {filename_exists}, Overwrite flag: {overwrite}")
@@ -456,29 +500,21 @@ def save_template_route():
             "skip_rows": skip_rows 
         }
         try:
-            logger.info(f"/save_template: Attempting to write template data to '{target_file_path}'.")
             with open(target_file_path, 'w', encoding='utf-8') as f:
                 json.dump(template_data, f, indent=4)
-
-            status_code = 200 if filename_exists else 201 
-            action_message = "overwritten" if filename_exists else "saved"
-            logger.info(f"/save_template: Template '{original_template_name}' {action_message} as '{safe_target_filename}'.")
-            return jsonify({
-                "status": "success",
-                "message": f"Template '{original_template_name}' {action_message} successfully.",
-                "template_name": original_template_name, 
-                "filename": safe_target_filename
-            }), status_code
+            logger.info(f"/save_template: Successfully saved template '{original_template_name}' to '{safe_target_filename}'.")
+            return jsonify({"status": "success", "message": f"Template '{original_template_name}' saved as '{safe_target_filename}'.", "filename": safe_target_filename, "template_name": original_template_name}), 200
         except IOError as e:
-            logger.error(f"/save_template: IOError saving/overwriting template '{safe_target_filename}': {e}", exc_info=True)
-            return jsonify({"error": f"Could not save template file: {str(e)}"}), 500
-        except Exception as e:
-            logger.error(f"/save_template: Unexpected error saving/overwriting template '{safe_target_filename}': {e}", exc_info=True)
-            return jsonify({"error": "An unexpected server error occurred while saving."}), 500
+            logger.error(f"/save_template: Error writing template file '{target_file_path}': {e}", exc_info=True)
+            return jsonify({"error": f"Could not save template to file: {str(e)}"}), 500
+        except Exception as e_save: # Catch any other unexpected errors during save
+            logger.error(f"/save_template: Unexpected error saving template '{target_file_path}': {e_save}", exc_info=True)
+            return jsonify({"error": "An unexpected error occurred while saving the template."}), 500
     
-    # Fallback for any unhandled state, though the logic above should cover all expected paths.
-    logger.error(f"/save_template: Reached unexpected state in logic for {original_template_name} / {safe_target_filename} with overwrite={overwrite}. This should not happen.")
-    return jsonify({"error": "Unexpected state in save template logic. Please check server logs."}), 500
+    # Fallback return for the route if no other condition led to a response.
+    # This should ideally not be reached if logic for conflicts and saving is sound.
+    logger.error(f"/save_template: Reached end of function for '{original_template_name}' without a definitive action. This might indicate a logic flaw.")
+    return jsonify({"error": "An unexpected internal server error occurred. Template processing was inconclusive."}), 500
 
 @app.route('/download_processed_data', methods=['POST'])
 def download_processed_data_route():

@@ -1,0 +1,36 @@
+{
+    "template_name": "NHCA",
+    "filename": "NHCA.json",
+    "creation_timestamp": "2025-06-08T17:25:32.062267Z",
+    "field_mappings": [
+        {
+            "original_header": "DATE T",
+            "mapped_field": "DueDate"
+        },
+        {
+            "original_header": "DESCRIPTION DESCRIPTION",
+            "mapped_field": "ItemDescription"
+        },
+        {
+            "original_header": "INVOICE/REF NO. INVOICE/REF NO.",
+            "mapped_field": "InvoiceID"
+        },
+        {
+            "original_header": "CUSTOMERP.O. CUSTOMERP.O.",
+            "mapped_field": "PONumber"
+        },
+        {
+            "original_header": "ITEM BALANCE ITEM BALANCE",
+            "mapped_field": "TotalAmount"
+        },
+        {
+            "original_header": "INVOICE/REF NO. E E N",
+            "mapped_field": "InvoiceID"
+        },
+        {
+            "original_header": "ITEM BALANCE EM BALANCE",
+            "mapped_field": "TotalAmount"
+        }
+    ],
+    "skip_rows": 0
+}

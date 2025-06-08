@@ -1,7 +1,7 @@
 {
     "template_name": "Alpha-Med-WithHeaders",
     "filename": "Alpha-Med-WithHeaders.json",
-    "creation_timestamp": "2025-06-08T15:25:10.416188Z",
+    "creation_timestamp": "2025-06-08T17:28:07.761369Z",
     "field_mappings": [
         {
             "original_header": "Account set",
@@ -24,7 +24,7 @@
             "mapped_field": "TotalAmount"
         },
         {
-            "original_header": "30 Days",
+            "original_header": "90 Days",
             "mapped_field": "PaymentTerms"
         },
         {

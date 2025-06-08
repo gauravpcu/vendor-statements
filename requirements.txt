@@ -9,3 +9,4 @@ pdfplumber
 pytesseract
 pdf2image
 requests
+docling
