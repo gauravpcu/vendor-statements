@@ -12,14 +12,17 @@
     <h1>Upload Files</h1>
 
     <div class="navigation-links" style="text-align: center; margin-bottom: 20px;">
-        <a href="{{ url_for('manage_templates_page') }}">Manage Saved Templates</a>
+        <a href="{{ url_for('manage_templates_page') }}" class="btn btn-secondary">Manage Saved Templates</a>
         <span style="margin: 0 10px;">|</span> <!-- Optional separator -->
-        <a href="{{ url_for('manage_preferences_page') }}">Manage Learned Preferences</a>
+        <a href="{{ url_for('manage_preferences_page') }}" class="btn btn-secondary">Manage Learned Preferences</a>
     </div>
 
-    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="files[]" id="fileInput" multiple>
-        <input type="submit" value="Upload">
+    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data" style="margin-bottom: 20px;">
+        <div class="upload-controls-container">
+            <label for="fileInput" class="btn btn-primary btn-file-input-label">Choose Files</label>
+            <input type="file" name="files[]" id="fileInput" multiple class="hidden-file-input">
+            <input type="submit" value="Upload Files" class="btn btn-primary">
+        </div>
     </form>
 
     <h2>Overall Progress</h2>
@@ -37,7 +40,7 @@
     <div id="chatbotPanel">
         <div id="chatbotHeader">
             <span>Chatbot Assistant</span>
-            <button id="toggleChatbotButton">&ndash;</button> <!-- Using &ndash; for a better looking dash -->
+            <button id="toggleChatbotButton" class="btn btn-light btn-sm">&ndash;</button> <!-- Using &ndash; for a better looking dash -->
         </div>
         <div id="chatbotMessages">
             <!-- Messages will appear here -->
@@ -45,7 +48,7 @@
         </div>
         <div id="chatbotInputContainer">
             <input type="text" id="chatbotInput" placeholder="Type your message..." disabled> <!-- Initially disabled -->
-            <button id="chatbotSendButton" disabled>Send</button> <!-- Initially disabled -->
+            <button id="chatbotSendButton" class="btn btn-primary" disabled>Send</button> <!-- Initially disabled -->
         </div>
     </div>
 

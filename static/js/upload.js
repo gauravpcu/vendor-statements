@@ -142,20 +142,28 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         
-        // Clear the container with visual indication
-        containerElement.innerHTML = '<div style="padding: 10px; background-color: #e8f4ff; border-radius: 5px; margin-bottom: 10px;">Building mapping table...</div>';
+        // Clear the container
+        containerElement.innerHTML = ''; // Clear previous content directly
+
+        // Create the new header and actions box
+        const headerActionsBox = document.createElement('div');
+        headerActionsBox.className = 'mapping-header-actions-box';
+
+        // Add pseudo-headers
+        const headerTitles = ['Original Header', 'Mapped Field', 'Confidence', 'Action'];
+        headerTitles.forEach(title => {
+            const headerSpan = document.createElement('span');
+            headerSpan.className = 'pseudo-table-header';
+            headerSpan.textContent = title;
+            headerActionsBox.appendChild(headerSpan);
+        });
         
-        // Short delay to ensure the clearing is visible
-        setTimeout(() => {
-            // Clear again before adding the new table
-            containerElement.innerHTML = '';
-            
-            const table = document.createElement('table');
-            table.className = 'mapping-table';
-            const thead = table.createTHead();
-            const tbody = table.createTBody();
-            const headerRow = thead.insertRow();
-            headerRow.innerHTML = '<th>Original Header</th><th>Mapped Field</th><th>Confidence</th><th>Action</th>';
+        containerElement.appendChild(headerActionsBox); // Add the new box to the container
+
+        // Create the table for mapping rows (without its own thead)
+        const table = document.createElement('table');
+        table.className = 'mapping-table-rows-only'; // New class for styling
+        const tbody = table.createTBody();
 
         headers.forEach((header, index) => {
             const row = tbody.insertRow();
@@ -218,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const actionCell = row.insertCell();
             const helpButton = document.createElement('button');
             helpButton.textContent = 'Suggest Alternatives';
-            helpButton.className = 'chatbot-help-button';
+            helpButton.className = 'chatbot-help-button btn btn-info btn-sm'; // Added .btn .btn-info .btn-sm
             helpButton.dataset.originalHeader = header;
             helpButton.dataset.currentMapping = select.value; // Set initial current mapping
             helpButton.dataset.fileIdentifier = fileIdentifier;
@@ -351,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // fileEntryDiv.appendChild(table); // Changed: append to the containerElement
         containerElement.appendChild(table);
         
-        }, 50); // Close the setTimeout
+        // Removed the setTimeout wrapper as direct manipulation should be fine now
     }
 
     if (uploadForm) {
@@ -447,40 +455,49 @@ document.addEventListener('DOMContentLoaded', function () {
                                 fileEntryDiv.id = `file-entry-${fileIdentifierSafe}`;
                                 console.log(`[File Result ${index}] Processing fileResult:`, fileResult);
 
-                                // --- Start of new grouped controls logic ---
-                                let settingsBoxInnerHTML = '';
+                                // --- Updated grouped controls logic for single-line display ---
+                                let settingsItems = [];
 
                                 // 1. Rows to Skip input (conditional)
                                 if (fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') {
-                                    settingsBoxInnerHTML += `
-                                        <div class="skip-rows-container">
+                                    settingsItems.push(`
+                                        <span class="setting-item skip-rows-group">
                                             <label for="skipRows-${fileIdentifierSafe}">Rows to Skip (Header):</label>
                                             <input type="number" id="skipRows-${fileIdentifierSafe}" name="skipRows-${fileIdentifierSafe}" value="${fileResult.skip_rows !== undefined ? fileResult.skip_rows : 0}" min="0" class="skip-rows-input">
-                                        </div>
-                                    `;
+                                        </span>
+                                    `);
                                 }
 
                                 // 2. Template Selection dropdown (conditional on success)
                                 if (fileResult.success) {
-                                    settingsBoxInnerHTML += `
-                                        <div class="template-selection-container">
+                                    settingsItems.push(`
+                                        <span class="setting-item template-select-group">
                                             <label for="templateSelect-${fileIdentifierSafe}">Template:</label>
-                                            <select id="templateSelect-${fileIdentifierSafe}" class="template-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
+                                            <select id="templateSelect-${fileIdentifierSafe}" class="template-select modern-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
                                                 <option value="">-- Select a Template --</option>
                                             </select>
-                                        </div>
-                                    `;
+                                        </span>
+                                    `);
                                 }
                                 
-                                // 3. Apply Settings button (conditional, after template selection)
+                                // 3. Apply Settings button (conditional)
                                 if (fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') {
-                                    settingsBoxInnerHTML += `
-                                        <button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-settings-button apply-skip-rows-btn">Apply Settings</button>
-                                    `;
+                                    // This button will be a direct flex item in file-settings-box
+                                    settingsItems.push(`
+                                        <button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-settings-button apply-skip-rows-btn btn btn-secondary btn-sm">Apply Settings</button>
+                                    `);
                                 }
                                 
-                                const settingsBoxHTML = settingsBoxInnerHTML ? `<div class="file-settings-box">${settingsBoxInnerHTML}</div>` : '';
-                                // --- End of new grouped controls logic ---
+                                const settingsBoxHTML = settingsItems.length > 0 ? `<div class="file-settings-box">${settingsItems.join('')}</div>` : '';
+                                // --- End of updated grouped controls logic ---
+
+                                // --- Create Save Template Button Box (Re-introduced) ---
+                                const saveTemplateButtonHTML = fileResult.success ? `
+                                    <div class="save-template-box">
+                                        <button class="save-template-button btn btn-warning" data-file-identifier="${fileResult.filename}">Save as Template</button>
+                                    </div>
+                                ` : '';
+                                // --- End Create Save Template Button Box ---
 
 
                                 fileEntryDiv.innerHTML = `
@@ -490,12 +507,12 @@ document.addEventListener('DOMContentLoaded', function () {
                                         ${fileResult.applied_template_name ? `<p class="status-info">Auto-applied Template: <strong>${fileResult.applied_template_name}</strong> (Skip Rows: ${fileResult.skip_rows !== undefined ? fileResult.skip_rows : 'N/A'})</p>` : ''}
                                     </div>
                                     ${settingsBoxHTML}
-                                    <div class="mapping-controls">
-                                        <button class="process-file-button" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}" ${!fileResult.success ? 'disabled' : ''}>Process File Data</button>
-                                        <button class="save-template-button" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>Save as Template</button>
-                                        <button class="view-file-button" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>View Uploaded File</button>
-                                        <button class="download-processed-button" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>Download Processed Data</button>
+                                    <div class="mapping-controls-box">
+                                        <button class="process-file-button btn btn-success" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}" ${!fileResult.success ? 'disabled' : ''}>Process File Data</button>
+                                        <button class="view-file-button btn btn-info" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>View Uploaded File</button>
+                                        <button class="download-processed-button btn btn-primary" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>Download Processed Data</button>
                                     </div>
+                                    ${saveTemplateButtonHTML}
                                     <div class="mapping-table-container" id="mapping-table-container-${fileIdentifierSafe}"></div>
                                     <div class="data-preview-area" id="data-preview-${fileIdentifierSafe}"></div>
                                     <div class="validation-summary-area" id="validation-summary-${fileIdentifierSafe}\"></div>
@@ -527,7 +544,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                         }
                                         
                                         try {
-                                            // Pass FIELD_DEFINITIONS to renderMappingTable
+                                            // Pass FIELD_DEFINITIONS to renderMappingTable (removed fileResult.success)
                                             renderMappingTable(mappingTableContainer, fileResult.filename, fileResult.file_type, fileResult.headers, fileResult.field_mappings, FIELD_DEFINITIONS, index);
                                             console.log(`[File Result ${index}] mapping table rendered`);
                                         } catch (err) {
@@ -652,7 +669,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             const finalizedMappings = [];
-            const mappingSelects = fileEntryElement.querySelectorAll('.mapping-table .mapping-select');
+            // MODIFIED: Changed selector to use .mapping-table-rows-only
+            const mappingSelects = fileEntryElement.querySelectorAll('.mapping-table-rows-only .mapping-select');
+            console.log("[Process File Button] Found mappingSelects count:", mappingSelects.length); // Log how many selects were found
+
             mappingSelects.forEach(select => {
                 if (select.value && select.value !== '__IGNORE__' && select.value !== '__CREATE_NEW__') {
                     finalizedMappings.push({
@@ -1038,7 +1058,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const applyBtn = document.querySelector(`#applySkipRows-${fileIdentifierSafe}`);
         if (applyBtn) {
             applyBtn.disabled = true;
-            applyBtn.textContent = "Processing...";
+            applyBtn.textContent = "Processing..."; // Keep text, btn classes handle style
         }
         
         console.log(`[reprocessFileWithSkipRows] Sending request to server for ${fileIdentifier}`);
@@ -1061,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // Re-enable the button regardless of outcome
             if (applyBtn) {
                 applyBtn.disabled = false;
-                applyBtn.textContent = "Apply";
+                applyBtn.textContent = "Apply Settings"; // Reset to original text
             }
             
             if (!response.ok) {
@@ -1090,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             
                             // Directly call renderMappingTable with full context
                             console.log(`[reprocessFileWithSkipRows] Rendering new mapping table for ${fileIdentifier}`);
-                            renderMappingTable(mappingTableContainer, fileIdentifier, fileType, result.headers, result.field_mappings, FIELD_DEFINITIONS, 0);
+                            renderMappingTable(mappingTableContainer, fileIdentifier, fileType, result.headers, result.field_mappings, FIELD_DEFINITIONS, 0, true);
                             
                             // Force a UI update by slightly resizing the container
                             setTimeout(() => {
@@ -1123,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // Re-enable the button if it wasn't already done in the response handler
             if (applyBtn) {
                 applyBtn.disabled = false;
-                applyBtn.textContent = "Apply";
+                applyBtn.textContent = "Apply Settings"; // Reset to original text
             }
         });
     }

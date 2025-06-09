@@ -178,8 +178,358 @@
     background-color: #42474c;
 }
 
+/* === MODERN BUTTON STYLES START === */
 
-/* Chatbot Styling */
+/* General Button Styling */
+.btn {
+    display: inline-block;
+    font-weight: 500;
+    color: #212529;
+    text-align: center;
+    vertical-align: middle;
+    cursor: pointer;
+    user-select: none;
+    background-color: transparent;
+    border: 1px solid transparent;
+    padding: 0.65rem 1.2rem; /* Generous padding */
+    font-size: 0.95rem;
+    line-height: 1.6;
+    border-radius: 6px; /* Rounded corners */
+    transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.1s ease-in-out;
+    text-decoration: none;
+}
+
+.btn:hover {
+    text-decoration: none;
+    transform: translateY(-1px); /* Subtle lift */
+}
+
+.btn:active {
+    transform: translateY(0px);
+    box-shadow: none;
+}
+
+.btn:focus, .btn.focus {
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, .25); /* Primary color focus glow */
+}
+
+.btn:disabled, .btn.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: translateY(0px);
+}
+
+/* Primary Button */
+.btn-primary {
+    color: #fff;
+    background-color: #3498db; /* Peter River blue */
+    border-color: #3498db;
+}
+
+.btn-primary:hover {
+    color: #fff;
+    background-color: #2980b9; /* Darker shade */
+    border-color: #216ca0;
+}
+
+.btn-primary:focus, .btn-primary.focus {
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, .5);
+}
+
+.btn-primary:disabled, .btn-primary.disabled {
+    color: #fff;
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+/* Secondary Button */
+.btn-secondary {
+    color: #fff;
+    background-color: #7f8c8d; /* Asbestos gray */
+    border-color: #7f8c8d;
+}
+
+.btn-secondary:hover {
+    color: #fff;
+    background-color: #6c7a7b; /* Darker shade */
+    border-color: #5d6869;
+}
+
+.btn-secondary:focus, .btn-secondary.focus {
+    box-shadow: 0 0 0 0.2rem rgba(127, 140, 141, .5);
+}
+
+/* Light Button */
+.btn-light {
+    color: #212529;
+    background-color: #f8f9fa;
+    border-color: #f8f9fa;
+}
+
+.btn-light:hover {
+    color: #212529;
+    background-color: #e2e6ea;
+    border-color: #dae0e5;
+}
+
+.btn-light:focus, .btn-light.focus {
+    box-shadow: 0 0 0 0.2rem rgba(216, 217, 219, .5);
+}
+
+/* Success Button */
+.btn-success {
+    color: #fff;
+    background-color: #2ecc71; /* Emerald green */
+    border-color: #2ecc71;
+}
+.btn-success:hover {
+    color: #fff;
+    background-color: #27ae60; /* Darker Emerald */
+    border-color: #25a058;
+}
+
+/* Warning Button */
+.btn-warning {
+    color: #212529;
+    background-color: #f1c40f; /* Sunflower yellow */
+    border-color: #f1c40f;
+}
+.btn-warning:hover {
+    color: #212529;
+    background-color: #f39c12; /* Orange for hover/darker yellow */
+    border-color: #e68e00;
+}
+
+/* Danger Button */
+.btn-danger {
+    color: #fff;
+    background-color: #e74c3c; /* Alizarin crimson */
+    border-color: #e74c3c;
+}
+.btn-danger:hover {
+    color: #fff;
+    background-color: #c0392b; /* Darker Alizarin */
+    border-color: #b33426;
+}
+
+/* Info Button */
+.btn-info {
+    color: #fff;
+    background-color: #3498db; /* Using primary blue for info as well, or choose a distinct teal/cyan */
+    border-color: #3498db;
+}
+.btn-info:hover {
+    color: #fff;
+    background-color: #2980b9;
+    border-color: #216ca0;
+}
+
+
+/* Small button variant */
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    border-radius: 4px;
+}
+
+/* Style for file input: label styled as a button */
+.btn-file-input-label {
+    position: relative;
+    overflow: hidden;
+    margin-right: 5px;
+    /* Will also have .btn and a color variant like .btn-primary */
+}
+
+/* Hide the actual file input */
+input[type="file"].hidden-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    border: 0;
+}
+
+/* Styling for navigation links to look like buttons */
+.navigation-links a.btn {
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+/* === SELECT ELEMENT STYLING START === */
+select,
+.template-select
+{
+    display: inline-block;
+    width: auto; 
+    height: calc(1.6em + (0.65rem * 2) + 2px); /* Match button: line-height + padding-top/bottom + border */
+    padding: 0.65rem 1.75rem 0.65rem 1.2rem; /* Padding: top/bottom like button, right for arrow, left like button */
+    font-size: 0.95rem;
+    font-weight: 400; /* Standard select weight */
+    line-height: 1.6;
+    color: #495057;
+    vertical-align: middle;
+    background-color: #fff;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+    border: 1px solid #ced4da; /* Standard border */
+    border-radius: 6px; /* Match button radius */
+    appearance: none;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+select:focus,
+.template-select:focus {
+    border-color: #80bdff; /* Light blue focus */
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, .25); /* Primary color focus glow */
+}
+
+.template-select {
+    min-width: 220px; 
+}
+
+/* Update skip-rows-input to match new aesthetic */
+.skip-rows-input {
+    padding: 0.65rem 1.2rem; /* Match button padding */
+    font-size: 0.95rem; /* Match button font size */
+    border-radius: 6px; /* Match button border radius */
+    border: 1px solid #ced4da; /* Standard border */
+    height: calc(1.6em + (0.65rem * 2) + 2px); /* Match button height */
+    width: 90px; /* Adjusted width */
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.skip-rows-input:focus {
+     border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, .25);
+}
+
+/* Style for the main h1 header */
+h1 {
+    font-size: 2.5rem;
+    font-weight: 300;
+    margin: 0 0 1rem 0;
+    color: #333;
+    position: relative;
+    display: inline-block;
+}
+
+h1:after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 2px;
+    bottom: -5px;
+    left: 0;
+    background: linear-gradient(to right, transparent, #007bff, transparent);
+}
+
+/* === FILE UPLOAD CONTROLS ALIGNMENT === */
+.upload-controls-container {
+    display: flex;
+    justify-content: center; /* Center the items horizontally */
+    align-items: center; /* Align items vertically */
+    gap: 10px; /* Space between the "Choose Files" label and "Upload Files" button */
+    margin-bottom: 20px; /* Retain the original form's margin-bottom */
+}
+
+/* === FILE ENTRY SETTINGS & CONTROLS BOXES === */
+.file-settings-box, .mapping-controls-box, .save-template-box, .mapping-header-actions-box {
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+    display: flex; /* Enable flexbox for inline layout */
+    flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+    align-items: center; /* Vertically align items */
+    gap: 15px; /* Spacing between items */
+}
+
+/* Specifically for mapping-controls-box and save-template-box to be left-aligned */
+.mapping-controls-box, .save-template-box {
+    justify-content: flex-start; /* Align items to the start (left) */
+}
+
+/* Styling for the new mapping header and actions box */
+.mapping-header-actions-box {
+    justify-content: flex-start; /* Align pseudo-headers to the left */
+    gap: 0; /* Remove general gap, manage spacing with pseudo-header margins/padding or flex-basis */
+}
+
+.pseudo-table-header {
+    font-weight: bold;
+    padding: 8px 10px; /* Consistent padding */
+    flex-basis: 25%; /* Each of the 4 headers gets 25% */
+    flex-grow: 0;
+    flex-shrink: 0;
+    text-align: left;
+    color: #333;
+    background-color: #f2f2f2;
+    border-right: 1px solid #ddd;
+    box-sizing: border-box;
+}
+
+.pseudo-table-header:last-of-type {
+    border-right: none; /* No border for the last header */
+}
+
+/* REMOVED: .mapping-header-actions-box .save-template-button styling as it's no longer in this box */
+
+/* Adjustments for the table that now only contains rows */
+.mapping-table-rows-only {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0;
+    border-top: none;
+    table-layout: fixed;
+}
+
+.mapping-table-rows-only td {
+    border: 1px solid #ddd;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    word-wrap: break-word;
+    box-sizing: border-box;
+}
+
+/* Assign widths to table cells to match pseudo-headers */
+.mapping-table-rows-only td:nth-child(1) { width: 25%; }
+.mapping-table-rows-only td:nth-child(2) { width: 25%; }
+.mapping-table-rows-only td:nth-child(3) { width: 25%; }
+.mapping-table-rows-only td:nth-child(4) { width: 25%; }
+
+/* Ensure .save-template-box is styled and left-aligned (already covered by shared rule) */
+/* .save-template-box { justify-content: flex-start; } */
+
+.file-settings-box .setting-item {
+    display: flex; /* Make label and input/select align */
+    align-items: center;
+    gap: 5px; /* Space between label and its control */
+}
+
+.file-settings-box label,
+.mapping-controls-box label { /* If labels are ever added to mapping-controls-box */
+    margin-bottom: 0; /* Override default label margins if any */
+}
+
+.file-settings-box .skip-rows-input {
+    width: 60px; /* Smaller width for number input */
+}
+
+.file-settings-box .template-select {
+    min-width: 180px; /* Give template select some base width */
+}
+
+/* === CHATBOT STYLES START === */
 #chatbotPanel {
     position: fixed;
     bottom: 20px;
@@ -269,31 +619,19 @@
     border: 1px solid #ccc;
     border-radius: 4px;
     margin-right: 8px;
+    /* Updated to match modern input styles */
+    padding: 0.65rem 1.2rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    border-radius: 6px;
+    border: 1px solid #ced4da; /* Standard border */
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
-#chatbotInput:disabled {
-    background-color: #e9ecef;
-    cursor: not-allowed;
-}
-
-
-#chatbotSendButton {
-    padding: 8px 15px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-#chatbotSendButton:hover:not(:disabled) {
-    background-color: #0056b3;
-}
-
-#chatbotSendButton:disabled {
-    background-color: #a0cfff; /* Lighter blue when disabled */
-    cursor: not-allowed;
+#chatbotInput:focus {
+    border-color: #80bdff; /* Light blue focus */
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, .25); /* Primary color focus glow */
 }
 
 /* Chatbot Suggestion Styling */
@@ -341,387 +679,39 @@
     font-size: 0.9em;
 }
 
-.bot-message .save-template-prompt .btn-save-template-yes {
-    background-color: #28a745; /* Green */
-    color: white;
-    border-color: #28a745;
-}
-.bot-message .save-template-prompt .btn-save-template-yes:hover {
-    background-color: #218838;
-}
-
-.bot-message .save-template-prompt .btn-save-template-no {
-    background-color: #dc3545; /* Red */
-    color: white;
-    border-color: #dc3545;
-}
-.bot-message .save-template-prompt .btn-save-template-no:hover {
-    background-color: #c82333;
-}
-
-
 /* Chatbot Help Button in Table */
-.chatbot-help-button {
-    padding: 4px 8px;
-    font-size: 0.85em;
-    color: #fff;
-    background-color: #17a2b8; /* Info color / Teal */
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.chatbot-help-button:hover {
-    background-color: #138496; /* Darker teal */
-}
 
 .mappings-table td, .mappings-table th { /* Ensure consistent padding for all cells */
     padding: 6px 8px; /* Adjusted padding slightly */
 }
 
 /* Process File Button Styling */
-.process-file-button {
-    display: block; /* Make it take its own line */
-    margin: 15px 0 5px 0; /* Margin top/bottom, centered if parent is text-align: center */
-    padding: 10px 15px;
-    font-size: 1em;
-    color: #fff;
-    background-color: #28a745; /* Green color for go/process */
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.process-file-button:hover {
-    background-color: #218838; /* Darker green */
-}
+/*.process-file-button {
+    /* Replaced by .btn .btn-success (and maybe .btn-block if that class is defined/needed) */
+   /* margin: 15px auto 5px auto; /* Keep margin for block-like behavior if centered */
+/*}
 
 /* Save Mappings Template Button Styling */
 .save-mappings-template-button {
-    display: inline-block; /* Or block if it should take full width */
-    margin: 10px 5px 5px 0; /* Similar to other buttons, adjust as needed */
-    padding: 8px 12px;
-    font-size: 0.9em;
-    color: #fff;
-    background-color: #ffc107; /* Amber/Yellow color for save/template action */
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.save-mappings-template-button:hover {
-    background-color: #e0a800; /* Darker amber/yellow */
+    /* Replaced by .btn .btn-warning */
+     margin: 10px 5px 5px 0; /* Keep margin */
 }
 
 /* Export to Excel Button Styling */
 .export-to-excel-button {
-    display: block; /* Or inline-block if preferred next to other items */
-    margin: 10px auto; /* Centered with some margin */
-    padding: 8px 15px;
-    font-size: 0.95em;
-    color: #fff;
-    background-color: #198754; /* A different shade of green, e.g., for export actions */
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.export-to-excel-button:hover {
-    background-color: #146c43; /* Darker shade for hover */
+    /* Replaced by .btn .btn-success (or a different shade if needed) */
+    margin: 10px auto; /* Keep margin */
 }
 
 /* Run Advanced Validations Button Styling */
 .run-advanced-validations-button {
-    display: block;
-    margin: 10px auto;
-    padding: 8px 15px;
-    font-size: 0.95em;
-    color: #fff;
-    background-color: #fd7e14; /* Orange color for validation action */
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    /* Replaced by .btn (needs a color, e.g. .btn-warning or .btn-info) */
+    margin: 10px auto; /* Keep margin */
 }
 
-.run-advanced-validations-button:hover {
-    background-color: #e66b00; /* Darker orange */
-}
-
-/* Advanced Validation Highlight Styling */
-.extracted-data-table td.adv-validation-error {
-    background-color: #ffcccc; /* More prominent red for advanced errors */
-    /* border: 1px solid #cc0000 !important; */
-    outline: 1px dashed #cc0000; /* Dashed outline to differentiate */
-    outline-offset: -1px;
-}
-
-.extracted-data-table td.adv-validation-warning {
-    background-color: #fff8cc; /* More prominent yellow for advanced warnings */
-    /* border: 1px solid #cccc00 !important; */
-    outline: 1px dashed #b3b300;
-    outline-offset: -1px;
-}
-
-/* Advanced Validation Tooltip Styling */
-#advanced-validation-tooltip {
-    position: absolute;
-    background-color: #444; /* Darker tooltip for advanced messages */
-    color: #fff;
-    padding: 10px;
-    border-radius: 5px;
-    font-size: 0.9em;
-    z-index: 1020; /* Ensure it's above other elements, including other tooltips */
-    max-width: 350px;
-    text-align: left;
-    white-space: pre-line;
-    border: 1px solid #222;
-}
-/* .tooltip-hidden and .tooltip-visible are already defined and can be reused if generic enough,
-   or create specific ones if needed. Assuming generic is fine. */
-
-
-/* Extracted Data Table Styling */
-.extracted-data-container {
-    margin-top: 20px;
-    padding-top: 15px;
-    border-top: 2px solid #007bff; /* Blue separator */
-    max-height: 400px; /* Max height before container scrolls */
-    overflow-y: auto; /* Enable vertical scroll for the container */
-    overflow-x: auto; /* Enable horizontal scroll for wide tables */
-}
-
-.extracted-data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85em; /* Slightly smaller font for dense data */
-    margin-bottom: 10px; /* Space at the bottom if content follows */
-}
-
-.extracted-data-table th,
-.extracted-data-table td {
-    border: 1px solid #dee2e6; /* Lighter border for data table */
-    padding: 5px 7px; /* Slightly tighter padding */
-    text-align: left;
-    vertical-align: top;
-}
-
-.extracted-data-table th {
-    background-color: #e9ecef; /* Light grey for headers */
-    color: #495057; /* Darker text for headers */
-    font-weight: bold;
-    position: sticky; /* Sticky headers */
-    top: 0; /* Required for sticky */
-    z-index: 1; /* Ensure headers are above scrolling content if container scrolls */
-}
-
-.extracted-data-table td.data-validation-error {
-    background-color: #f8d7da; /* Light red, similar to .confidence-low */
-    color: #721c24; /* Dark red text */
-    /* Optionally, add a more prominent border or icon */
-    /* border: 1px solid #d9534f; */
-}
-/* Add a small visual cue like a dot or a subtle icon for errors, if desired */
-/* .data-validation-error::before { content: "⚠️ "; font-size: 0.8em; } */
-
-.view-original-link {
-    color: #007bff;
-    text-decoration: none;
-    font-size: 0.9em; /* Slightly smaller if needed */
-}
-
-.view-original-link:hover {
-    text-decoration: underline;
-}
-
-.success-inline {
-    color: green; /* Or use existing .success color if defined */
-}
-
-.failure-inline {
-    color: red; /* Or use existing .failure color if defined */
-}
-
-
-/* Field Tooltip Styling */
-.field-tooltip-trigger {
-    cursor: help; /* Indicate it provides help */
-    margin-left: 5px;
-    font-size: 0.9em;
-    color: #007bff; /* Bootstrap info blue, or any color of choice */
-    display: inline-block; /* Allows for better positioning if needed */
-    vertical-align: middle; /* Align with select box text better */
-}
-
-#field-description-tooltip {
-    position: absolute; /* Positioned relative to the viewport or a positioned ancestor */
-    background-color: #333;
-    color: #fff;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 0.85em;
-    z-index: 1010; /* Above chatbot panel if they overlap */
-    max-width: 300px; /* Prevent it from being too wide */
-    text-align: left;
-    white-space: pre-line; /* Respect newline characters in the tooltip content */
-    /* Smooth transition for visibility could be added if using opacity */
-    /* transition: opacity 0.2s; */
-}
-
-.tooltip-hidden {
-    display: none;
-    /* opacity: 0; */
-}
-
-.tooltip-visible {
-    display: block;
-    /* opacity: 1; */
-}
-
-/* Apply Template Dropdown Styling */
-.template-dropdown-container {
-    margin-top: 10px;
-    margin-bottom: 10px;
-    padding: 5px;
-    background-color: #f8f9fa; /* Light background to group it */
-    border-radius: 4px;
-    border: 1px solid #e9ecef;
-}
-
-.template-dropdown-container label {
-    margin-right: 8px;
-    font-weight: bold;
-    font-size: 0.9em;
-}
-
-.apply-template-dropdown {
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid #ced4da;
-    font-size: 0.9em;
-}
-
-/* Skip Rows UI Styling */
-.skip-rows-container {
-    display: flex;
-    align-items: center;
-    margin-bottom: 15px;
-    padding: 10px;
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-}
-
-.skip-rows-input {
-    width: 80px;
-    margin-left: 10px;
-    margin-right: 10px;
-    padding: 8px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-size: 16px;
-}
-
-.apply-skip-rows-btn {
-    padding: 8px 15px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    font-weight: bold;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    transition: all 0.3s ease;
-}
-
-.apply-skip-rows-btn:hover {
-    background-color: #0069d9;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-}
-
-.apply-skip-rows-btn:active {
-    background-color: #0062cc;
-    transform: translateY(1px);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-
-.apply-skip-rows-btn:disabled {
-    background-color: #6c757d;
-    cursor: not-allowed;
-    opacity: 0.65;
-    box-shadow: none;
-    transform: none;
-}
-
-
-/* Remember Mapping Prompt Styling */
-.remember-mapping-prompt {
-    display: block; /* Take its own line below the dropdown */
-    margin-top: 5px;
-    padding: 5px;
-    background-color: #f0f8ff; /* AliceBlue or a very light blue/grey */
-    border-radius: 3px;
-    font-size: 0.85em;
-    color: #333;
-}
-
-.remember-mapping-prompt strong,
-.remember-mapping-prompt em {
-    font-weight: bold; /* Make vendor name and headers stand out */
-}
-.remember-mapping-prompt em {
-    font-style: italic;
-}
-
-
-.remember-mapping-prompt button {
-    margin-left: 8px;
-    padding: 2px 6px;
-    font-size: 0.9em;
-    border-radius: 3px;
-    cursor: pointer;
-    border: 1px solid transparent;
-}
-
-.btn-remember-yes {
-    background-color: #28a745; /* Green */
-    color: white;
-    border-color: #28a745;
-}
-.btn-remember-yes:hover {
-    background-color: #218838;
-}
-
-.btn-remember-no {
-    background-color: #6c757d; /* Grey */
-    color: white;
-    border-color: #6c757d;
-}
-.btn-remember-no:hover {
-    background-color: #5a6268;
-}
-
-/* Navigation Links for Manage Templates page link */
-.navigation-links {
-    /* text-align: center; and margin-bottom: 20px; are already inline in index.html */
-    /* Additional styling can be added here if needed */
-}
-
-.navigation-links a {
-    margin: 0 10px; /* Spacing if multiple links are added later */
-    text-decoration: none;
-    color: #007bff; /* Standard link blue */
-    font-weight: bold;
-    padding: 5px 0; /* Add some padding for easier clicking */
-}
-
-.navigation-links a:hover {
-    text-decoration: underline;
-    color: #0056b3; /* Darker blue on hover */
+/* Update .apply-vendor-prefs-button to use .btn classes */
+.apply-vendor-prefs-button {
+    /* All styles will come from .btn .btn-secondary .btn-sm */
+    /* display: inline-block; ... etc ... */
+    margin-left: 10px; /* Keep specific margin if necessary */
 }
