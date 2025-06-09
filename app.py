@@ -6,6 +6,7 @@ import logging
 import json
 import datetime
 import pandas as pd
+import re # Added import for regular expressions
 from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from data_validator import validate_uniqueness, validate_invoice_via_api # Import new validation functions
@@ -126,7 +127,6 @@ def manage_preferences_page():
 def upload_files():
     files = request.files.getlist('files[]') # Ensure this matches your frontend key
     results = []
-    # uploaded_file_count = 0 # This variable was declared but not used meaningfully, can be removed or used.
 
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -144,10 +144,14 @@ def upload_files():
 
     for file_storage in files:
         if file_storage and file_storage.filename:
-            filename = file_storage.filename
+            original_filename_for_vendor = file_storage.filename # Store original filename for vendor matching and PDF caching
+            filename = file_storage.filename # This might change if PDF is converted
             results_entry = {
                 "filename": filename, "success": False, "message": "File processing started.",
-                "file_type": "unknown", "headers": [], "field_mappings": []
+                "file_type": "unknown", "headers": [], "field_mappings": [],
+                "applied_template_name": None, # For auto-applied template
+                "applied_template_filename": None, # For auto-applied template
+                "skip_rows": 0 # Default, to be overridden by template
             }
             try:
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -166,7 +170,7 @@ def upload_files():
                     effective_filename_for_processing = filename
                     effective_file_path_for_processing = file_path
 
-                    if detected_type_name == 'OCTET_STREAM':
+                    if detected_type_name == 'OCTET_STREAM': # Corrected from 'XLS' to 'OCTET_STREAM' for comparison
                         logger.info(f"[UPLOAD_DEBUG] MIME type is application/octet-stream for {filename}. Attempting fallback using file extension.")
                         _, file_extension = os.path.splitext(filename)
                         file_extension_lower = file_extension.lower()
@@ -183,14 +187,13 @@ def upload_files():
                     
                     logger.info(f"[UPLOAD_DEBUG] Final detected_type_name after potential fallback: '{detected_type_name}'")
                     
-                    is_processable_type = detected_type_name and detected_type_name != 'OCTET_STREAM'
+                    is_processable_type = detected_type_name and detected_type_name != 'OCTET_STREAM' # Ensure OCTET_STREAM itself is not processable
                     logger.info(f"[UPLOAD_DEBUG] Is processable type? {is_processable_type} (based on detected_type_name: '{detected_type_name}')")
 
                     if is_processable_type:
                         results_entry["file_type"] = detected_type_name
-                        results_entry["success"] = True # Mark as success for now, subsequent steps can set to False
+                        results_entry["success"] = True 
                         results_entry["message"] = "Upload and type detection successful."
-                        # uploaded_file_count += 1 # If you intend to use this count
 
                         if detected_type_name == "PDF":
                             try:
@@ -199,118 +202,173 @@ def upload_files():
                                 csv_output_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_output_filename)
                                 
                                 logger.info(f"PDF detected. Attempting to convert '{filename}' to CSV at '{csv_output_path}'.")
-                                extract_tables_from_file(file_path, csv_output_path) # file_path is original PDF
+                                extract_tables_from_file(file_path, csv_output_path) 
                                 
                                 if os.path.exists(csv_output_path):
                                     logger.info(f"Successfully converted PDF '{filename}' to CSV: '{csv_output_filename}'.")
                                     effective_file_path_for_processing = csv_output_path
-                                    effective_filename_for_processing = csv_output_filename
-                                    results_entry["file_type"] = "CSV" # Treat as CSV
-                                    results_entry["filename"] = csv_output_filename # Update identifier
-                                    results_entry["original_pdf_filename"] = file_storage.filename
+                                    effective_filename_for_processing = csv_output_filename # Use this for further processing
+                                    results_entry["file_type"] = "CSV" 
+                                    results_entry["filename"] = csv_output_filename 
+                                    results_entry["original_pdf_filename"] = original_filename_for_vendor # Keep track of original PDF name
                                     results_entry["message"] = "PDF successfully converted to CSV and uploaded."
-                                    detected_type_name = "CSV" # Update for header extraction
+                                    detected_type_name = "CSV" 
                                 else:
                                     logger.warning(f"PDF to CSV conversion for '{filename}' did not produce output. Proceeding with direct PDF extraction.")
-                                    # results_entry["filename"] remains original PDF filename
                             except Exception as e_pdf_to_csv:
                                 logger.error(f"Error converting PDF '{filename}' to CSV: {e_pdf_to_csv}", exc_info=True)
                                 results_entry["message"] += f" (Note: PDF to CSV conversion failed: {str(e_pdf_to_csv)})"
-                                # results_entry["filename"] remains original PDF filename
                     
-                    else: # Not a processable type
+                    else: 
                         final_error_message = f"Unsupported file type (Reported MIME: {raw_mime_type}"
                         current_file_extension_for_msg = os.path.splitext(filename)[1].lower()
                         if mime_type == 'application/octet-stream':
-                            if detected_type_name == 'OCTET_STREAM':
+                            if detected_type_name == 'OCTET_STREAM': # Explicitly check if it remained OCTET_STREAM
                                 final_error_message += f", extension '{current_file_extension_for_msg}' not recognized for fallback"
-                            else:
-                                final_error_message += f", processing error after octet-stream detection (ext: {current_file_extension_for_msg}, final type: {detected_type_name})"
-                        elif not detected_type_name:
+                            # else: if it was octet-stream but fallback gave a non-processable type, this is covered by generic 'else' below
+                        elif not detected_type_name: # MIME type not in SUPPORTED_MIME_TYPES
                             final_error_message += ", MIME type not configured as supported"
-                        else:
-                            final_error_message += f", resolved as unprocessable type '{detected_type_name}'"
+                        # else: detected_type_name is something else not processable (e.g. if we add more types to SUPPORTED_MIME_TYPES but don't handle them)
+                        # This 'else' branch (is_processable_type is False) implies detected_type_name is None or 'OCTET_STREAM' or other unhandled
                         final_error_message += ")."
                         
                         results_entry["message"] = final_error_message
-                        results_entry["file_type"] = raw_mime_type # Report original raw MIME
+                        results_entry["file_type"] = raw_mime_type 
                         results_entry["success"] = False
                 
                 except magic.MagicException as e_magic:
-                    logger.error(f"MagicException for {filename}: {e_magic}", exc_info=True)
+                    logger.error(f"MagicException for {original_filename_for_vendor}: {e_magic}", exc_info=True)
                     results_entry["message"] = "Error detecting file type (file may be corrupted or inaccessible)."
                     results_entry["file_type"] = "error_detection_magic"
                     results_entry["success"] = False
-                except Exception as e_detect: # Broader exception for other detection phase errors
-                    logger.error(f"Error during file type detection phase for {filename}: {e_detect}", exc_info=True)
+                except Exception as e_detect: 
+                    logger.error(f"Error during file type detection phase for {original_filename_for_vendor}: {e_detect}", exc_info=True)
                     results_entry["message"] = f"Error during file type detection: {str(e_detect)}"
                     results_entry["file_type"] = "error_detection_general"
                     results_entry["success"] = False
 
-                # Proceed with header extraction only if type detection was successful and type is processable
-                if results_entry["success"] and detected_type_name in ["CSV", "XLSX", "XLS", "PDF"]: # PDF here means direct PDF extraction if conversion failed/skipped
-                    logger.info(f"Extracting headers for: {effective_filename_for_processing} (Path: {effective_file_path_for_processing}, Type: {detected_type_name})")
-                    
-                    # Use 'detected_type_name' which is CSV if PDF was converted, or original PDF type
-                    if detected_type_name == "PDF": # Direct PDF extraction
-                        # effective_file_path_for_processing should be the original PDF path (file_path)
-                        headers_extraction_result = extract_headers_from_pdf_tables(file_path) 
-                    else: # CSV, XLSX, XLS
-                        headers_extraction_result = extract_headers(effective_file_path_for_processing, detected_type_name)
+                # === Start of New/Modified Header Extraction and Template Logic ===
+                if results_entry["success"] and detected_type_name in ["CSV", "XLSX", "XLS", "PDF"]:
+                    logger.info(f"Processing headers and mappings for: {effective_filename_for_processing} (Type: {detected_type_name}), Original: {original_filename_for_vendor}")
 
-                    if isinstance(headers_extraction_result, list): # Standard header list
-                        results_entry["headers"] = headers_extraction_result
-                        if headers_extraction_result:
-                            mappings = header_mapper.generate_mappings(headers_extraction_result, FIELD_DEFINITIONS)
-                            results_entry["field_mappings"] = mappings
-                            logger.info(f"Generated {len(mappings)} mappings for {filename} (Type: {detected_type_name}).")
-                            results_entry["message"] = "Headers extracted and auto-mapped." # Overwrites previous success message
-                        else: # No headers found
-                            results_entry["message"] += " No headers were found/extracted." # Append to existing message
-                            # Consider if this should set success to False for this stage
-                    elif isinstance(headers_extraction_result, dict) and "error" in headers_extraction_result: # Error from extraction
-                        results_entry["success"] = False
-                        results_entry["message"] = headers_extraction_result["error"]
-                    elif isinstance(headers_extraction_result, dict) and "headers" in headers_extraction_result: # PDF extraction dict
-                        # This case is for extract_headers_from_pdf_tables if it returns the dict directly
-                        # And we are processing a PDF directly (not a converted CSV)
-                        pdf_headers = headers_extraction_result.get("headers")
-                        pdf_data_rows = headers_extraction_result.get("data_rows")
-                        if pdf_headers is not None: # Check if headers were actually found
-                           results_entry["headers"] = pdf_headers
-                           if pdf_headers: # If headers list is not empty
-                               mappings = header_mapper.generate_mappings(pdf_headers, FIELD_DEFINITIONS)
-                               results_entry["field_mappings"] = mappings
-                               logger.info(f"Generated {len(mappings)} mappings for PDF {filename}.")
-                               results_entry["message"] = "PDF headers extracted and auto-mapped."
-                               if pdf_data_rows is not None:
-                                   TEMP_PDF_DATA_FOR_EXTRACTION[filename] = { # Cache against original PDF filename
-                                       'headers': pdf_headers,
-                                       'data_rows': pdf_data_rows
-                                   }
-                                   logger.info(f"Cached 'data_rows' for PDF {filename}. Headers: {len(pdf_headers)}, Rows: {len(pdf_data_rows)}")
-                           else: # PDF headers list was empty
-                               results_entry["message"] += " No headers were found in the PDF."
-                        else: # "headers" key was missing or None in PDF extraction result
+                    template_applied_data = None
+                    current_skip_rows_for_extraction = 0 # Default for header extraction
+
+                    # 1. Extract Vendor Name from original filename
+                    vendor_name_from_file = ""
+                    if original_filename_for_vendor:
+                        name_without_extension = os.path.splitext(original_filename_for_vendor)[0]
+                        # Split by the first occurrence of space, underscore, or hyphen
+                        parts = re.split(r'[ _-]', name_without_extension, 1)
+                        if parts: vendor_name_from_file = parts[0]
+
+                    # 2. Search for and load Template
+                    if vendor_name_from_file and os.path.exists(TEMPLATES_DIR):
+                        logger.info(f"Attempting to find template for vendor: '{vendor_name_from_file}' from filename '{original_filename_for_vendor}'")
+                        normalized_vendor_name = vendor_name_from_file.lower()
+                        for template_file_in_storage in os.listdir(TEMPLATES_DIR):
+                            template_base_name = os.path.splitext(template_file_in_storage)[0]
+                            if template_base_name.lower() == normalized_vendor_name and template_file_in_storage.endswith(".json"):
+                                try:
+                                    template_path = os.path.join(TEMPLATES_DIR, template_file_in_storage)
+                                    with open(template_path, 'r', encoding='utf-8') as f_tpl:
+                                        loaded_template = json.load(f_tpl)
+                                    if "field_mappings" in loaded_template: # Basic validation
+                                        template_applied_data = loaded_template
+                                        current_skip_rows_for_extraction = loaded_template.get("skip_rows", 0)
+                                        results_entry["skip_rows"] = current_skip_rows_for_extraction # Set for response
+                                        results_entry["applied_template_name"] = loaded_template.get("template_name", template_base_name)
+                                        results_entry["applied_template_filename"] = template_file_in_storage
+                                        logger.info(f"Found template '{template_file_in_storage}' for vendor '{vendor_name_from_file}'. Will use its skip_rows: {current_skip_rows_for_extraction}.")
+                                        break # Stop searching once a template is found
+                                except Exception as e_tpl_load:
+                                    logger.error(f"Error loading template {template_file_in_storage} for {vendor_name_from_file}: {e_tpl_load}")
+                    
+                    # 3. Extract Actual Headers from file
+                    actual_headers_from_file = []
+                    # `file_path` is the path to the original uploaded file (e.g., original.pdf)
+                    # `effective_file_path_for_processing` is the path to the file to be parsed (e.g., original-converted.csv or original.xlsx)
+                    
+                    if detected_type_name == "PDF": # This means direct PDF extraction (conversion failed or was not applicable)
+                        # Use original PDF path: `file_path`
+                        headers_extraction_result_dict = extract_headers_from_pdf_tables(file_path) 
+                        if isinstance(headers_extraction_result_dict, dict) and "error" not in headers_extraction_result_dict:
+                            actual_headers_from_file = headers_extraction_result_dict.get("headers", [])
+                            pdf_data_rows = headers_extraction_result_dict.get("data_rows")
+                            if actual_headers_from_file and pdf_data_rows is not None:
+                                TEMP_PDF_DATA_FOR_EXTRACTION[original_filename_for_vendor] = {
+                                   'headers': actual_headers_from_file,
+                                   'data_rows': pdf_data_rows
+                                }
+                                logger.info(f"Cached 'data_rows' for PDF {original_filename_for_vendor}. Headers: {len(actual_headers_from_file)}, Rows: {len(pdf_data_rows)}")
+                        elif isinstance(headers_extraction_result_dict, dict) and "error" in headers_extraction_result_dict:
+                            results_entry["success"] = False # Mark failure at this stage
+                            results_entry["message"] = headers_extraction_result_dict["error"]
+                        else: # Unexpected result from PDF header extraction
                             results_entry["success"] = False
-                            results_entry["message"] = "Error extracting headers from PDF: 'headers' field missing in result."
+                            results_entry["message"] = "Unexpected result from PDF header extraction."
+
+                    else: # CSV, XLSX, XLS (detected_type_name is "CSV", "XLSX", or "XLS")
+                        # Use `effective_file_path_for_processing` and `current_skip_rows_for_extraction`
+                        headers_list_or_error_dict = extract_headers(effective_file_path_for_processing, detected_type_name, skip_rows=current_skip_rows_for_extraction)
+                        if isinstance(headers_list_or_error_dict, list):
+                            actual_headers_from_file = headers_list_or_error_dict
+                        elif isinstance(headers_list_or_error_dict, dict) and "error" in headers_list_or_error_dict:
+                            results_entry["success"] = False # Mark failure
+                            results_entry["message"] = headers_list_or_error_dict["error"]
+                        else: # Unexpected result
+                            results_entry["success"] = False
+                            results_entry["message"] = "Unexpected result from header extraction for tabular file."
                             
-            except Exception as e_save: # Outer try-except for file saving and initial processing
-                logger.error(f"Error saving/processing file {filename}: {e_save}", exc_info=True)
-                # results_entry is already defined, update it
+                    results_entry["headers"] = actual_headers_from_file
+
+                    # 4. Determine Field Mappings (Template or Auto-generated), only if header extraction was successful
+                    if results_entry["success"]: # Check if header extraction above was successful
+                        if actual_headers_from_file: # If headers were found
+                            if template_applied_data:
+                                results_entry["field_mappings"] = template_applied_data.get("field_mappings", [])
+                                # results_entry["skip_rows"] is already set from template
+                                results_entry["message"] = f"Template '{results_entry['applied_template_name']}' auto-applied with {results_entry['skip_rows']} skip rows."
+                                logger.info(f"Applied template mappings for '{original_filename_for_vendor}'.")
+                            else: # No template applied, generate mappings
+                                mappings = header_mapper.generate_mappings(actual_headers_from_file, FIELD_DEFINITIONS)
+                                results_entry["field_mappings"] = mappings
+                                # results_entry["skip_rows"] remains default 0 if no template
+                                results_entry["message"] = "Headers extracted and auto-mapped." # Default message
+                                logger.info(f"Generated {len(mappings)} mappings for {original_filename_for_vendor} (Type: {detected_type_name}).")
+                        else: # No headers found in file, but header extraction itself didn't error
+                            current_msg = results_entry.get("message", "")
+                            if "successfully" in current_msg.lower() or "auto-mapped" in current_msg.lower() : # Avoid double "no headers" if already part of a success message
+                                results_entry["message"] = current_msg + " However, no headers were found/extracted."
+                            else:
+                                results_entry["message"] = (current_msg + " No headers were found/extracted.").strip()
+                            # field_mappings will be empty. If a template was "applied" but file has no headers, template mappings might be misleading.
+                            # For now, if template_applied_data exists, its mappings are used.
+                            if template_applied_data: # A template was found, but file has no headers
+                                results_entry["message"] = f"Template '{results_entry['applied_template_name']}' was found, but no headers were extracted from the file."
+                                # Keep template mappings? Or clear them? For now, keep. Frontend will show no headers to map to.
+                    # else: header extraction failed, message already set by that stage.
+                # === End of New/Modified Header Extraction and Template Logic ===
+                            
+            except Exception as e_save: 
+                logger.error(f"Error saving/processing file {original_filename_for_vendor}: {e_save}", exc_info=True)
                 results_entry["success"] = False
                 results_entry["message"] = f"Error saving or processing file: {str(e_save)}"
                 results_entry["file_type"] = "error_system"
             
             results.append(results_entry)
-            log_message = (f"File: {results_entry.get('filename', 'N/A')}, Status: {'Success' if results_entry.get('success') else 'Failure'}, "
+            log_message = (f"File: {results_entry.get('filename', 'N/A')} (Original: {original_filename_for_vendor}), "
+                           f"Status: {'Success' if results_entry.get('success') else 'Failure'}, "
                            f"Type: {results_entry.get('file_type', 'unknown')}, Msg: {results_entry.get('message')}, "
-                           f"Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}")
-            if "original_pdf_filename" in results_entry:
+                           f"Headers: {len(results_entry.get('headers',[]))}, Mappings: {len(results_entry.get('field_mappings',[]))}, "
+                           f"SkipRows: {results_entry.get('skip_rows', 0)}")
+            if results_entry.get("applied_template_name"):
+                log_message += f", AppliedTemplate: {results_entry.get('applied_template_name')}"
+            if "original_pdf_filename" in results_entry and results_entry["original_pdf_filename"] != results_entry["filename"]: # Log if different
                 log_message += f", OriginalPDF: {results_entry['original_pdf_filename']}"
+
             logger.info(log_message)
             
-    # logger.info(f"Processed {uploaded_file_count} files successfully out of {len(files)} attempts.") # If using uploaded_file_count
     return jsonify(results)
 
 @app.route('/chatbot_suggest_mapping', methods=['POST'])

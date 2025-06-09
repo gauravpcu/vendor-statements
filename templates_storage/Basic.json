@@ -1,0 +1,36 @@
+{
+    "template_name": "Basic",
+    "filename": "Basic.json",
+    "creation_timestamp": "2025-06-08T23:58:37.878534Z",
+    "field_mappings": [
+        {
+            "original_header": "Purchase Order Number",
+            "mapped_field": "PONumber"
+        },
+        {
+            "original_header": "Inv Ref",
+            "mapped_field": "InvoiceID"
+        },
+        {
+            "original_header": "Doc Date",
+            "mapped_field": "InvoiceDate"
+        },
+        {
+            "original_header": "Baseline Date",
+            "mapped_field": "DueDate"
+        },
+        {
+            "original_header": "Due Date",
+            "mapped_field": "DueDate"
+        },
+        {
+            "original_header": "Amount",
+            "mapped_field": "ItemQuantity"
+        },
+        {
+            "original_header": "Tax",
+            "mapped_field": "TaxAmount"
+        }
+    ],
+    "skip_rows": 10
+}

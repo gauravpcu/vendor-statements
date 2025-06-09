@@ -447,34 +447,49 @@ document.addEventListener('DOMContentLoaded', function () {
                                 fileEntryDiv.id = `file-entry-${fileIdentifierSafe}`;
                                 console.log(`[File Result ${index}] Processing fileResult:`, fileResult);
 
-                                let skipRowsInputHTML = '';
+                                // --- Start of new grouped controls logic ---
+                                let settingsBoxInnerHTML = '';
+
+                                // 1. Rows to Skip input (conditional)
                                 if (fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') {
-                                    skipRowsInputHTML = `
+                                    settingsBoxInnerHTML += `
                                         <div class="skip-rows-container">
                                             <label for="skipRows-${fileIdentifierSafe}">Rows to Skip (Header):</label>
-                                            <input type="number" id="skipRows-${fileIdentifierSafe}" name="skipRows-${fileIdentifierSafe}" value="0" min="0" class="skip-rows-input">
-                                            <button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-skip-rows-btn">Apply</button>
+                                            <input type="number" id="skipRows-${fileIdentifierSafe}" name="skipRows-${fileIdentifierSafe}" value="${fileResult.skip_rows !== undefined ? fileResult.skip_rows : 0}" min="0" class="skip-rows-input">
+                                        </div>
+                                    `;
+                                }
+
+                                // 2. Template Selection dropdown (conditional on success)
+                                if (fileResult.success) {
+                                    settingsBoxInnerHTML += `
+                                        <div class="template-selection-container">
+                                            <label for="templateSelect-${fileIdentifierSafe}">Template:</label>
+                                            <select id="templateSelect-${fileIdentifierSafe}" class="template-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
+                                                <option value="">-- Select a Template --</option>
+                                            </select>
                                         </div>
                                     `;
                                 }
                                 
-                                // Add a container for template selection
-                                const templateSelectionHTML = `
-                                    <div class="template-selection-container">
-                                        <label for="templateSelect-${fileIdentifierSafe}">Apply Template:</label>
-                                        <select id="templateSelect-${fileIdentifierSafe}" class="template-select" data-file-identifier="${fileResult.filename}">
-                                            <option value="">-- Select a Template --</option>
-                                        </select>
-                                    </div>
-                                `;
+                                // 3. Apply Settings button (conditional, after template selection)
+                                if (fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') {
+                                    settingsBoxInnerHTML += `
+                                        <button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-settings-button apply-skip-rows-btn">Apply Settings</button>
+                                    `;
+                                }
+                                
+                                const settingsBoxHTML = settingsBoxInnerHTML ? `<div class="file-settings-box">${settingsBoxInnerHTML}</div>` : '';
+                                // --- End of new grouped controls logic ---
+
 
                                 fileEntryDiv.innerHTML = `
                                     <div class="file-header">
                                         <h3>${fileResult.filename} (Type: ${fileResult.file_type})</h3>
                                         <p class="status-${fileResult.success ? 'success' : 'error'}">${fileResult.message}</p>
+                                        ${fileResult.applied_template_name ? `<p class="status-info">Auto-applied Template: <strong>${fileResult.applied_template_name}</strong> (Skip Rows: ${fileResult.skip_rows !== undefined ? fileResult.skip_rows : 'N/A'})</p>` : ''}
                                     </div>
-                                    ${skipRowsInputHTML}
-                                    ${templateSelectionHTML} 
+                                    ${settingsBoxHTML}
                                     <div class="mapping-controls">
                                         <button class="process-file-button" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}" ${!fileResult.success ? 'disabled' : ''}>Process File Data</button>
                                         <button class="save-template-button" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>Save as Template</button>
@@ -483,7 +498,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                     </div>
                                     <div class="mapping-table-container" id="mapping-table-container-${fileIdentifierSafe}"></div>
                                     <div class="data-preview-area" id="data-preview-${fileIdentifierSafe}"></div>
-                                    <div class="validation-summary-area" id="validation-summary-${fileIdentifierSafe}"></div>
+                                    <div class="validation-summary-area" id="validation-summary-${fileIdentifierSafe}\"></div>
                                 `;
 
                                 // Append to fileStatusesDiv first
@@ -531,6 +546,19 @@ document.addEventListener('DOMContentLoaded', function () {
                                         if (templateSelect) {
                                             populateTemplateDropdown(templateSelect, fileResult.filename);
                                             console.log(`[File Result ${index}] populateTemplateDropdown called`);
+
+                                            // If a template was auto-applied by backend, select it in the dropdown
+                                            if (fileResult.applied_template_filename) {
+                                                // Wait a brief moment for populateTemplateDropdown to potentially finish
+                                                setTimeout(() => {
+                                                    if (Array.from(templateSelect.options).some(opt => opt.value === fileResult.applied_template_filename)) {
+                                                        templateSelect.value = fileResult.applied_template_filename;
+                                                        console.log(`[File Result ${index}] Auto-selected template '${fileResult.applied_template_filename}' in dropdown.`);
+                                                    } else {
+                                                        console.warn(`[File Result ${index}] Auto-applied template '${fileResult.applied_template_filename}' not found in dropdown options after population.`);
+                                                    }
+                                                }, 200); // Adjust delay if needed
+                                            }
                                         } else {
                                             console.error(`[File Result ${index}] templateSelect not found!`);
                                         }
