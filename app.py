@@ -862,13 +862,9 @@ def reprocess_file_route():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint for monitoring and AWS App Runner."""
-    try:
-        # Return minimal success response to ensure quick health checks
-        return jsonify({"status": "healthy"}), 200
-    except Exception as e:
-        logger.error(f"Health check failed: {e}", exc_info=True)
-        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+    """Health check endpoint for AWS App Runner - simplest possible successful response."""
+    # Return an empty 200 OK response with no content
+    return "", 200
 
 @app.route('/healthz', methods=['GET'])
 def detailed_health_check():
