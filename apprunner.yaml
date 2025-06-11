@@ -21,10 +21,10 @@ run:
     env: PORT
   health-check:
     path: '/health'
-    interval: 10
-    timeout: 5
-    healthy-threshold: 2
-    unhealthy-threshold: 3
+    interval: 30
+    timeout: 10
+    healthy-threshold: 1
+    unhealthy-threshold: 5
   env:
     - name: FLASK_ENV
       value: "production"

@@ -864,6 +864,16 @@ def reprocess_file_route():
 def health_check():
     """Health check endpoint for monitoring and AWS App Runner."""
     try:
+        # Return minimal success response to ensure quick health checks
+        return jsonify({"status": "healthy"}), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
+@app.route('/healthz', methods=['GET'])
+def detailed_health_check():
+    """Detailed health check endpoint for monitoring."""
+    try:
         # Check if critical directories exist
         directories_ok = all([
             os.path.exists(app.config['UPLOAD_FOLDER']),
@@ -943,3 +953,28 @@ def test_list_templates_route():
         'is_dir': os.path.isdir(TEMPLATES_DIR) if os.path.exists(TEMPLATES_DIR) else False,
         'files': template_info
     })
+
+@app.route('/debug', methods=['GET'])
+def debug_info():
+    """Debug endpoint to check environment variables and system information."""
+    import sys
+    import platform
+    
+    # Collect basic system and environment information
+    debug_info = {
+        "python_version": sys.version,
+        "platform": platform.platform(),
+        "environment_vars": {k: v for k, v in os.environ.items() if not k.lower().startswith(('azure', 'aws', 'secret', 'key', 'token', 'password'))},
+        "app_config": {
+            "UPLOAD_FOLDER_exists": os.path.exists(app.config['UPLOAD_FOLDER']),
+            "TEMPLATES_DIR_exists": os.path.exists(TEMPLATES_DIR),
+            "LEARNED_PREFERENCES_DIR_exists": os.path.exists(LEARNED_PREFERENCES_DIR),
+            "workdir_contents": os.listdir('.') if os.path.exists('.') else [],
+            "workdir_path": os.path.abspath('.'),
+        },
+        "field_definitions_loaded": len(FIELD_DEFINITIONS) > 0
+    }
+    
+    return jsonify(debug_info)
+
+# --- Debug/test routes ---
