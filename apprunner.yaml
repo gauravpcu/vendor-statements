@@ -14,7 +14,7 @@ build:
       - mkdir -p /app/templates_storage
       - mkdir -p /app/learned_preferences_storage
 run:
-  runtime-version: 3.10
+  runtime-version: 3.9.16
   command: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60 app:app
   network:
     port: 8080
