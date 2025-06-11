@@ -30,8 +30,12 @@ COPY . .
 # Create necessary directories and set permissions
 RUN mkdir -p /app/uploads /app/templates_storage /app/learned_preferences_storage
 
-# Expose the port App Runner will use
-EXPOSE 8080
+# Expose the ports App Runner will use
+EXPOSE 8080 8081
+
+# Copy startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Start command for App Runner
-CMD gunicorn --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 60 app:app
+CMD ["/app/start.sh"]

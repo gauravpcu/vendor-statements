@@ -21,6 +21,7 @@ run:
     env: PORT
   health-check:
     path: '/health'
+    port: '8081'
     interval: 30
     timeout: 5
     healthy-threshold: 1
@@ -30,6 +31,10 @@ run:
       value: "production"
     - name: PORT
       value: "8080"
+    - name: HEALTH_PORT
+      value: "8081"
+    - name: PYTHONUNBUFFERED
+      value: "1"
   secrets:
     - name: AZURE_OPENAI_KEY
       value-from: "/vendor-statements/azure-openai-key"

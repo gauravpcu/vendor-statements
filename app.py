@@ -1,3 +1,17 @@
+import sys
+import logging
+
+# Set up root logger for startup diagnostics
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(handler)
+
+# Log import-time debugging information
+root_logger.info("App starting up - Python version: %s", sys.version)
+root_logger.info("Working directory: %s", os.getcwd())
+
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os
 import io
