@@ -860,6 +860,49 @@ def reprocess_file_route():
             "message": f"Error reprocessing file: {str(e)}"
         }), 500
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring and AWS App Runner."""
+    try:
+        # Check if critical directories exist
+        directories_ok = all([
+            os.path.exists(app.config['UPLOAD_FOLDER']),
+            os.path.exists(TEMPLATES_DIR),
+            os.path.exists(LEARNED_PREFERENCES_DIR)
+        ])
+        
+        # Check if field definitions were loaded successfully
+        field_defs_ok = len(FIELD_DEFINITIONS) > 0
+        
+        # Optional: Check Azure OpenAI connection if it's configured
+        azure_openai_status = "not_configured"
+        if azure_openai_configured:
+            try:
+                test_result = test_azure_openai_connection()
+                azure_openai_status = "ok" if test_result.get("success") else "error"
+            except Exception:
+                azure_openai_status = "error"
+        
+        # Overall health is good if directories and field definitions are OK
+        health_ok = directories_ok and field_defs_ok
+        
+        return jsonify({
+            "status": "healthy" if health_ok else "degraded",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "checks": {
+                "directories": "ok" if directories_ok else "error",
+                "field_definitions": "ok" if field_defs_ok else "error",
+                "azure_openai": azure_openai_status
+            }
+        }), 200 if health_ok else 503
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return jsonify({
+            "status": "unhealthy",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "error": str(e)
+        }), 500
+
 # --- Debug/test routes ---
 @app.route('/test/list_templates', methods=['GET'])
 def test_list_templates_route():
