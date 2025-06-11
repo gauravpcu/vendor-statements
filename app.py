@@ -1,4 +1,5 @@
 import sys
+import os
 import logging
 
 # Set up root logger for startup diagnostics
