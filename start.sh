@@ -1,15 +1,18 @@
 #!/bin/bash
-set -e
 
-echo "Starting vendor-statements application..."
+# Activate virtual environment if it exists
+if [ -d "venv" ]; then
+  source venv/bin/activate
+fi
 
-# Set default port if not specified
-: "${PORT:=8080}"
+# Install dependencies
+if [ -f "requirements.txt" ]; then
+  pip install -r requirements.txt
+fi
 
-echo "Main app will run on port: $PORT"
-
-# Start main application 
-echo "Starting main application with Flask development server..."
+# Run the Flask application
+# Use Flask's built-in server for development
+# You can specify host and port if needed, e.g., python app.py --host=0.0.0.0 --port=8000
 export FLASK_APP=app.py
 export FLASK_ENV=development
-exec python -m flask run --host=0.0.0.0 --port=${PORT}
+flask run --port=5001

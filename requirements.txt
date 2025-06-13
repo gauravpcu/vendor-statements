@@ -1,12 +1,17 @@
 Flask
-python-magic
+Werkzeug
+python-dotenv
+openai
+requests
 pandas
 openpyxl
 xlrd
-openai
-python-dotenv
+python-magic
 pdfplumber
-pytesseract
-pdf2image
-requests
-docling
+
+# Optional, for local development if you have tesseract installed
+# pytesseract
+# pdf2image
+
+# If you were using gunicorn for local serving, you can add it back
+# gunicorn

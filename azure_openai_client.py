@@ -60,7 +60,7 @@ def test_azure_openai_connection():
         message = f"Azure OpenAI connection test successful. Response: {response.choices[0].text.strip()}"
         logger.info(message)
         return {"success": True, "message": "Connection successful.", "details": response.choices[0].text.strip()}
-    except openai.APIAuthenticationError as e:
+    except openai.AuthenticationError as e: # Changed from APIAuthenticationError
         error_message = f"Azure OpenAI API Authentication Error: {e}"
         logger.error(error_message)
         return {"success": False, "message": "Authentication failed.", "details": str(e)}
