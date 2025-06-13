@@ -1,0 +1,35 @@
+##################################################
+# Core dependencies for Lambda function package
+##################################################
+Flask
+serverless-wsgi
+python-magic
+
+##################################################
+# Dependencies for Lambda Layer
+##################################################
+# API and configuration
+openai
+python-dotenv
+requests
+
+# Data processing
+pandas
+openpyxl
+xlrd
+pdfplumber
+
+##################################################
+# OPTIONAL: Large dependencies 
+# These are conditionally installed by build_lambda.sh if needed
+##################################################
+# OCR processing - adds ~50MB to layer size
+# pytesseract
+# pdf2image
+
+# Document AI processing - adds ~300MB+ to layer size!
+# docling
+
+##################################################
+# If you need additional dependencies, add them here
+##################################################
