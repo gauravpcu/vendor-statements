@@ -71,6 +71,47 @@ This script will:
 1. Once the API Gateway is deployed, get the invoke URL
 2. Test the API to ensure it's working correctly
 
+## Testing Locally
+
+Before deploying to AWS, you can test your Lambda function locally to verify it works correctly:
+
+1. Install the required packages:
+```bash
+pip install -r requirements-lambda.txt
+```
+
+2. Create a test event JSON file (test_event.json):
+```json
+{
+  "version": "2.0",
+  "routeKey": "ANY /",
+  "rawPath": "/",
+  "rawQueryString": "",
+  "headers": {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "host": "localhost:3000",
+    "user-agent": "Mozilla/5.0"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "Mozilla/5.0"
+    }
+  },
+  "isBase64Encoded": false
+}
+```
+
+3. Run the function locally:
+```bash
+python -c "import lambda_function; import json; event = json.load(open('test_event.json')); print(lambda_function.lambda_handler(event, None))"
+```
+
+If this executes successfully, your Lambda function should work in the AWS environment. If you encounter errors, they will be displayed in your terminal.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -88,6 +129,11 @@ This script will:
 3. **Memory Issues**: If your function runs out of memory:
    - Increase the allocated memory
    - Optimize your code to use less memory
+
+4. **Import Errors**: If you see errors like `No module named 'flask.json.tag'`:
+   - Make sure you're not removing essential Flask modules during the build process
+   - The build script has been updated to retain these modules
+   - If you still encounter this issue, modify build_lambda.sh to keep additional modules
 
 ## Size Optimization
 

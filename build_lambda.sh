@@ -139,7 +139,7 @@ find lambda_package -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null ||
 
 # Remove unnecessary files from popular packages
 echo "Removing unnecessary components of packages..."
-rm -rf lambda_package/flask/json/tag.py 2>/dev/null || true
+# DO NOT remove flask/json/tag.py as it's needed for proper Flask operation
 rm -rf lambda_package/werkzeug/debug 2>/dev/null || true
 rm -rf lambda_package/jinja2/tests 2>/dev/null || true
 rm -rf lambda_package/jinja2/debug.py 2>/dev/null || true
