@@ -3,7 +3,7 @@
 ##################################################
 Flask
 serverless-wsgi
-python-magic
+python-magic-bin==0.4.14
 
 ##################################################
 # Dependencies for Lambda Layer

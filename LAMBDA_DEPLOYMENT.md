@@ -135,6 +135,11 @@ If this executes successfully, your Lambda function should work in the AWS envir
    - The build script has been updated to retain these modules
    - If you still encounter this issue, modify build_lambda.sh to keep additional modules
 
+5. **libmagic Missing Error**: If you see an error like `failed to find libmagic`:
+   - We've switched from `python-magic` to `python-magic-bin` which includes the necessary binaries
+   - The lambda_function.py file includes code to configure the magic library properly
+   - If you're still having issues, you can create a custom layer with libmagic binaries for your Lambda architecture
+
 ## Size Optimization
 
 The `build_lambda.sh` script implements several optimization strategies:

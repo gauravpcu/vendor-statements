@@ -121,7 +121,7 @@ mkdir -p lambda_package
 
 # Install only Flask and serverless-wsgi (minimal dependencies)
 echo "Installing minimal Flask dependencies..."
-pip install Flask serverless-wsgi python-magic -t ./lambda_package --no-cache-dir
+pip install Flask serverless-wsgi python-magic-bin==0.4.14 -t ./lambda_package --no-cache-dir
 
 # Clean up unnecessary files to reduce size
 echo "Cleaning up unnecessary files..."
