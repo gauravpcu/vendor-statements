@@ -16,12 +16,40 @@ root_logger.info("Working directory: %s", os.getcwd())
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os
 import io
-import magic
 import logging
 import json
 import datetime
 import pandas as pd
 import re # Added import for regular expressions
+
+# Handle potential magic import issues
+try:
+    import magic
+    root_logger.info("Successfully imported magic module")
+except ImportError:
+    root_logger.warning("Failed to import magic module, using fallback implementation")
+    try:
+        from magic_fallback import detect_mime_type
+        
+        # Create a mock magic module to maintain compatibility
+        class MockMagic:
+            def from_file(self, filename, mime=False):
+                if mime:
+                    return detect_mime_type(filename)
+                return "unknown"
+                
+            def from_buffer(self, buffer, mime=False):
+                if mime:
+                    return 'application/octet-stream'
+                return "unknown"
+        
+        # Create a mock magic module
+        magic = type('magic', (), {
+            'Magic': MockMagic,
+        })
+        root_logger.info("Created mock magic module as fallback")
+    except Exception as e:
+        root_logger.error(f"Failed to create fallback for magic module: {str(e)}")
 from file_parser import extract_headers, extract_data, extract_headers_from_pdf_tables
 from azure_openai_client import test_azure_openai_connection, azure_openai_configured
 from data_validator import validate_uniqueness, validate_invoice_via_api # Import new validation functions

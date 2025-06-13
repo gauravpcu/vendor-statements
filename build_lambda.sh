@@ -121,7 +121,17 @@ mkdir -p lambda_package
 
 # Install only Flask and serverless-wsgi (minimal dependencies)
 echo "Installing minimal Flask dependencies..."
-pip install Flask serverless-wsgi python-magic-bin==0.4.14 -t ./lambda_package --no-cache-dir
+pip install Flask serverless-wsgi -t ./lambda_package --no-cache-dir
+
+# Handle the python-magic dependency specially for Lambda
+echo "Installing python-magic with Lambda compatibility..."
+pip install python-magic -t ./lambda_package --no-cache-dir
+# Try to install python-magic-bin-linux (specific for AWS Lambda's Linux environment)
+pip install python-magic-bin-linux -t ./lambda_package --no-cache-dir || echo "Could not install python-magic-bin-linux, will use fallback method"
+
+# Create directory structure for libmagic files
+echo "Setting up libmagic fallback strategy..."
+mkdir -p ./lambda_package/libmagic_fallback
 
 # Clean up unnecessary files to reduce size
 echo "Cleaning up unnecessary files..."
@@ -159,6 +169,7 @@ ESSENTIAL_FILES=(
     header_mapper.py
     pdftocsv.py
     field_definitions.json
+    magic_fallback.py
 )
 
 for file in "${ESSENTIAL_FILES[@]}"; do
