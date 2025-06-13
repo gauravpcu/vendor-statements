@@ -1,4 +1,4 @@
-#!/bin/bash
+./cleanup.sh#!/bin/bash
 
 # Cleanup script for AWS Lambda deployment
 # This script removes unnecessary files and directories to reduce package size
@@ -20,6 +20,7 @@ rm -rf htmlcov
 rm -rf temp_packages
 rm -rf lambda_package
 rm -rf lambda_layer
+rm -rf temp_venv temp_func_venv
 
 # Remove deployment artifacts if they exist
 echo "Removing old deployment artifacts..."

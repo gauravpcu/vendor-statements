@@ -8,6 +8,7 @@ This document provides instructions for deploying the Vendor Statements applicat
 - Python 3.9 or 3.10 (same version as your Lambda runtime)
 - pip (Python package installer)
 - Basic understanding of AWS Lambda, API Gateway, and related services
+- AWS S3 bucket (for deploying packages larger than 50MB)
 
 ## Deployment Steps
 
@@ -24,6 +25,11 @@ This script will:
 - Create a Lambda layer with all required dependencies
 - Create a Lambda function package with the application code
 - Optimize both packages to reduce size
+- Provide information about package sizes and deployment methods
+
+2. Check the output of the build script for size warnings:
+   - If any package exceeds 50MB, you will need to use the S3 deployment method
+   - If the total unzipped size exceeds 250MB, you may need further optimization
 
 ### Step 2: Create a Lambda Layer
 
@@ -70,6 +76,52 @@ This script will:
 
 1. Once the API Gateway is deployed, get the invoke URL
 2. Test the API to ensure it's working correctly
+
+## Deploying Large Packages via S3
+
+If your Lambda function package exceeds the 50MB direct upload limit, follow these steps to deploy through S3:
+
+1. Create an S3 bucket or use an existing one:
+```bash
+aws s3 mb s3://your-lambda-deployment-bucket --region us-east-1
+```
+
+2. Upload your Lambda deployment package to S3:
+```bash
+aws s3 cp vendor-statements-lambda.zip s3://your-lambda-deployment-bucket/
+```
+
+3. Create the Lambda function using the S3 object:
+```bash
+aws lambda create-function \
+  --function-name vendor-statements-processor \
+  --runtime python3.10 \
+  --handler lambda_function.lambda_handler \
+  --role arn:aws:iam::YOUR_ACCOUNT_ID:role/lambda-execution-role \
+  --code S3Bucket=your-lambda-deployment-bucket,S3Key=vendor-statements-lambda.zip \
+  --timeout 30 \
+  --memory-size 1024
+```
+
+4. Similarly, for the Lambda layer:
+```bash
+aws s3 cp vendor-statements-layer.zip s3://your-lambda-deployment-bucket/
+
+aws lambda publish-layer-version \
+  --layer-name vendor-statements-dependencies \
+  --description "Dependencies for Vendor Statements application" \
+  --content S3Bucket=your-lambda-deployment-bucket,S3Key=vendor-statements-layer.zip \
+  --compatible-runtimes python3.9 python3.10
+```
+
+5. Attach the layer to your function:
+```bash
+aws lambda update-function-configuration \
+  --function-name vendor-statements-processor \
+  --layers arn:aws:lambda:REGION:ACCOUNT_ID:layer:vendor-statements-dependencies:VERSION
+```
+
+Replace `REGION`, `ACCOUNT_ID`, and `VERSION` with your specific values.
 
 ## Testing Locally
 
@@ -142,6 +194,11 @@ If this executes successfully, your Lambda function should work in the AWS envir
      3. Use a custom fallback implementation that detects file types by extension
    - The solution is designed to gracefully degrade, maintaining functionality even if libmagic isn't available
    - For better MIME type detection, you can create a custom Lambda layer with libmagic binaries
+
+6. **Numpy Import Error**: If you see an error like `Error importing numpy: you should not try to import numpy from its source directory`:
+   - The build script now uses a clean virtual environment to install dependencies
+   - This prevents package path issues when importing libraries like numpy
+   - If you still encounter this issue, try cleaning up completely with `./cleanup.sh` before rebuilding
 
 ## Size Optimization
 

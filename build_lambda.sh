@@ -25,7 +25,23 @@ mkdir -p lambda_layer/python
 
 # Install core Lambda layer dependencies
 echo "Installing core dependencies in the Lambda layer..."
-pip install openai python-dotenv requests pandas openpyxl xlrd pdfplumber -t ./lambda_layer/python --no-cache-dir
+# Create a virtual environment for clean dependency installation
+echo "Creating a clean virtual environment for dependency installation..."
+python -m venv temp_venv
+source temp_venv/bin/activate
+
+# Install dependencies in the virtual environment first
+echo "Installing dependencies in virtual environment..."
+pip install --upgrade pip
+pip install openai python-dotenv requests pandas openpyxl xlrd pdfplumber --no-cache-dir
+
+# Now copy the installed packages to the Lambda layer
+echo "Copying installed packages to Lambda layer..."
+cp -r temp_venv/lib/python*/site-packages/* ./lambda_layer/python/
+
+# Deactivate and remove the temporary virtual environment
+deactivate
+rm -rf temp_venv
 
 # Check if PDF processing is needed based on project code
 if grep -q "import pytesseract\|import pdf2image" *.py; then
@@ -119,15 +135,26 @@ echo "STEP 3: Creating Lambda function package"
 echo "====================================="
 mkdir -p lambda_package
 
-# Install only Flask and serverless-wsgi (minimal dependencies)
+# Install Flask and serverless-wsgi (minimal dependencies)
 echo "Installing minimal Flask dependencies..."
-pip install Flask serverless-wsgi -t ./lambda_package --no-cache-dir
+# Create a clean virtual environment for function package dependencies
+echo "Creating a clean virtual environment for function package dependencies..."
+python -m venv temp_func_venv
+source temp_func_venv/bin/activate
 
-# Handle the python-magic dependency specially for Lambda
-echo "Installing python-magic with Lambda compatibility..."
-pip install python-magic -t ./lambda_package --no-cache-dir
-# Try to install python-magic-bin-linux (specific for AWS Lambda's Linux environment)
-pip install python-magic-bin-linux -t ./lambda_package --no-cache-dir || echo "Could not install python-magic-bin-linux, will use fallback method"
+# Install dependencies in the virtual environment first
+echo "Installing dependencies in virtual environment..."
+pip install --upgrade pip
+pip install Flask serverless-wsgi python-magic --no-cache-dir
+pip install python-magic-bin-linux --no-cache-dir || echo "Could not install python-magic-bin-linux, will use fallback method"
+
+# Copy the installed packages to the Lambda function package
+echo "Copying installed packages to Lambda function package..."
+cp -r temp_func_venv/lib/python*/site-packages/* ./lambda_package/
+
+# Deactivate and remove the temporary virtual environment
+deactivate
+rm -rf temp_func_venv
 
 # Create directory structure for libmagic files
 echo "Setting up libmagic fallback strategy..."
@@ -222,11 +249,78 @@ TOTAL_SIZE_BYTES=$((LAYER_SIZE_BYTES + FUNCTION_SIZE_BYTES))
 TOTAL_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $TOTAL_SIZE_BYTES/1024/1024}")
 
 # Display size warning if needed
-if [ $TOTAL_SIZE_BYTES -gt 73400320 ]; then # ~70MB in bytes
-    echo "WARNING: Total size exceeds AWS Lambda's direct upload limit of 70MB!"
-    echo "You will need to use S3 upload method described in LAMBDA_DEPLOYMENT.md"
+DIRECT_UPLOAD_LIMIT=50000000  # 50MB in bytes
+S3_UPLOAD_LIMIT=250000000     # 250MB in bytes
+
+if [ $FUNCTION_SIZE_BYTES -gt $DIRECT_UPLOAD_LIMIT ]; then
+    echo "WARNING: Lambda function package size ($FUNCTION_SIZE) exceeds the direct upload limit of 50MB!"
+    echo "You will need to use the S3 upload method described in LAMBDA_DEPLOYMENT.md"
+    
+    if [ $FUNCTION_SIZE_BYTES -gt $S3_UPLOAD_LIMIT ]; then
+        echo "ERROR: Lambda function package also exceeds the S3 upload limit of 250MB!"
+        echo "You need to further optimize the package size or split functionality across multiple functions."
+        echo "Consider removing some dependencies or moving more code to the layer."
+    fi
 else
-    echo "Total size is within AWS Lambda's direct upload limit of 70MB."
+    echo "Lambda function package size is within the direct upload limit of 50MB."
+fi
+
+if [ $LAYER_SIZE_BYTES -gt $DIRECT_UPLOAD_LIMIT ]; then
+    echo "NOTE: Lambda layer size ($LAYER_SIZE) exceeds direct upload limit, but layers can be uploaded through S3."
+fi
+
+if [ $TOTAL_SIZE_BYTES -gt $S3_UPLOAD_LIMIT ]; then
+    echo "WARNING: Total deployment size ($TOTAL_SIZE_MB MB) exceeds the Lambda total unzipped limit of 250MB!"
+    echo "Your function may not work correctly. Consider further optimization strategies."
+fi
+
+# Additional advanced size optimization
+echo "Performing advanced size optimization..."
+
+# For Lambda package
+echo "Optimizing Lambda function package size..."
+find lambda_package -name "*.so" | xargs strip 2>/dev/null || true
+find lambda_package -name "*.pyc" -delete
+find lambda_package -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find lambda_package -name "*.dist-info" -type d -exec rm -rf {} + 2>/dev/null || true
+find lambda_package -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+find lambda_package -name "*.pyx" -delete
+find lambda_package -name "*.pyd" -delete
+find lambda_package -name "*.pxd" -delete
+find lambda_package -name "*.c" -delete
+find lambda_package -name "*.h" -delete
+
+# For Lambda layer 
+echo "Optimizing Lambda layer size..."
+find lambda_layer -name "*.so" | xargs strip 2>/dev/null || true
+find lambda_layer -name "*.pyc" -delete
+find lambda_layer -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find lambda_layer -name "*.dist-info" -type d -exec rm -rf {} + 2>/dev/null || true
+find lambda_layer -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+find lambda_layer -name "*.pyx" -delete
+find lambda_layer -name "*.pyd" -delete
+find lambda_layer -name "*.pxd" -delete
+find lambda_layer -name "*.c" -delete
+find lambda_layer -name "*.h" -delete
+
+# Especially aggressive cleanup for pandas and numpy which are large
+if [ -d "lambda_layer/python/pandas" ]; then
+    echo "Optimizing pandas size..."
+    rm -rf lambda_layer/python/pandas/tests 2>/dev/null || true
+    rm -rf lambda_layer/python/pandas/io/formats/templates 2>/dev/null || true
+    rm -rf lambda_layer/python/pandas/io/excel/tests 2>/dev/null || true
+fi
+
+if [ -d "lambda_layer/python/numpy" ]; then
+    echo "Optimizing numpy size..."
+    rm -rf lambda_layer/python/numpy/doc 2>/dev/null || true
+    rm -rf lambda_layer/python/numpy/testing 2>/dev/null || true
+    rm -rf lambda_layer/python/numpy/tests 2>/dev/null || true
+fi
+
+if [ -d "lambda_layer/python/matplotlib" ]; then
+    echo "Removing matplotlib (large and usually not needed in Lambda)..."
+    rm -rf lambda_layer/python/matplotlib 2>/dev/null || true
 fi
 
 # Calculate elapsed time
@@ -237,8 +331,9 @@ echo "Build completed in $ELAPSED seconds"
 # Clean up any leftover unnecessary directories
 rm -rf __pycache__
 rm -rf temp_packages
+rm -rf temp_venv temp_func_venv
 
-# Clean up the temporary directories
+# Clean up the temporary build directories
 rm -rf lambda_package lambda_layer
 
 echo "====================================="
