@@ -883,4 +883,82 @@ body {
 
 .extracted-text-copy-btn:active {
     background: #004085;
+}/* 
+===== SAVE TEMPLATE SECTION ===== */
+.save-template-box {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.save-template-box .btn {
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.save-template-button {
+    background: #ffc107 !important;
+    border-color: #ffc107 !important;
+    color: #212529 !important;
+    font-weight: 500;
+}
+
+.save-template-button:hover {
+    background: #ffb300 !important;
+    border-color: #ffb300 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
+}
+
+.ignore-unmapped-button {
+    background: #6c757d !important;
+    border-color: #6c757d !important;
+    color: white !important;
+    font-size: 12px !important;
+}
+
+.ignore-unmapped-button:hover {
+    background: #5a6268 !important;
+    border-color: #5a6268 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+}
+
+/* Highlight unmapped fields */
+.mapping-table tbody tr.unmapped-highlight {
+    background-color: #fff3cd !important;
+    border: 1px solid #ffeaa7 !important;
+}
+
+.mapping-table tbody tr.unmapped-highlight td {
+    border-color: #ffeaa7 !important;
+}
+
+/* Template save confirmation */
+.template-save-confirmation {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 10px 0;
+    color: #155724;
+    font-size: 14px;
+}
+
+.template-save-error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 10px 0;
+    color: #721c24;
+    font-size: 14px;
 }

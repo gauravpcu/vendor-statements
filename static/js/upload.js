@@ -478,6 +478,65 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    // Helper function to highlight unmapped fields
+    function highlightUnmappedFields(fileEntryElement) {
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        let unmappedCount = 0;
+        
+        mappingRows.forEach(row => {
+            const mappedFieldSelect = row.cells[1].querySelector('select');
+            const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
+            
+            if (!mappedField || mappedField === '') {
+                // Highlight unmapped field
+                row.style.backgroundColor = '#fff3cd';
+                row.style.border = '1px solid #ffeaa7';
+                unmappedCount++;
+            } else {
+                // Remove highlight
+                row.style.backgroundColor = '';
+                row.style.border = '';
+            }
+        });
+        
+        return unmappedCount;
+    }
+
+    // Function to set all unmapped fields to "Ignore"
+    window.setUnmappedFieldsToIgnore = function(fileIdentifier, contextElement) {
+        console.log("[setUnmappedFieldsToIgnore] Called for fileIdentifier:", fileIdentifier);
+        const fileEntryElement = contextElement.closest('.file-entry');
+        if (!fileEntryElement) {
+            console.error("[setUnmappedFieldsToIgnore] Could not find parent .file-entry for context element.");
+            displayMessage("Error: Could not find file context.", true);
+            return;
+        }
+
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        let changedCount = 0;
+        
+        mappingRows.forEach(row => {
+            const mappedFieldSelect = row.cells[1].querySelector('select');
+            const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
+            
+            if (!mappedField || mappedField === '') {
+                // Set to ignore
+                mappedFieldSelect.value = '__IGNORE__';
+                // Remove highlight
+                row.style.backgroundColor = '';
+                row.style.border = '';
+                changedCount++;
+            }
+        });
+        
+        if (changedCount > 0) {
+            displayMessage(`Set ${changedCount} unmapped field(s) to 'Ignore'. You can now save the template.`);
+            console.log(`[setUnmappedFieldsToIgnore] Changed ${changedCount} fields to ignore.`);
+        } else {
+            displayMessage("All fields are already mapped or ignored.");
+        }
+    };
+
     window.triggerSaveTemplateWorkflow = function (fileIdentifier, contextElement) {
         console.log("[triggerSaveTemplateWorkflow] Called for fileIdentifier:", fileIdentifier, "Context Element:", contextElement);
         const fileEntryElement = contextElement.closest('.file-entry');
@@ -487,6 +546,16 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        // Highlight unmapped fields before asking for template name
+        const unmappedCount = highlightUnmappedFields(fileEntryElement);
+        
+        if (unmappedCount > 0) {
+            const proceedAnyway = confirm(`${unmappedCount} field(s) are not mapped (highlighted in yellow).\n\nDo you want to proceed with saving the template?\n\nClick OK to continue or Cancel to review mappings.`);
+            if (!proceedAnyway) {
+                return;
+            }
+        }
+
         const templateName = prompt("Enter a name for this template:");
         if (!templateName || templateName.trim() === "") {
             console.log("[triggerSaveTemplateWorkflow] User cancelled or entered empty template name.");
@@ -494,6 +563,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const currentMappings = [];
+        const unmappedHeaders = [];
+        const ignoredHeaders = [];
+        
         const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
         mappingRows.forEach(row => {
             const originalHeader = row.cells[0].textContent;
@@ -501,22 +573,50 @@ document.addEventListener('DOMContentLoaded', function () {
             const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
             const confidence = row.cells[2].textContent; // This is display text like "80%"
 
-            // We need to store the raw confidence score if available, or derive it
-            // For simplicity, let's assume the backend recalculates confidence or it's not critical for template saving here
-            // Or, if we stored it in a data attribute on the element, we could retrieve it.
-            // For now, just sending what's easily available.
-            if (mappedField && mappedField !== '__IGNORE__' && mappedField !== '__CREATE_NEW__') { // Only save actual mappings
+            if (mappedField && mappedField !== '__IGNORE__' && mappedField !== '__CREATE_NEW__') {
+                // Valid mapping
                 currentMappings.push({
                     original_header: originalHeader,
                     mapped_field: mappedField,
                     // confidence: parseFloat(confidence) / 100 || 0 // Example if confidence was just number
                 });
+            } else if (mappedField === '__IGNORE__') {
+                // Explicitly ignored field
+                ignoredHeaders.push(originalHeader);
+            } else {
+                // Unmapped field (empty or not selected)
+                unmappedHeaders.push(originalHeader);
             }
         });
 
+        // Provide detailed feedback about the mapping status
+        console.log(`[triggerSaveTemplateWorkflow] Mapping summary - Valid: ${currentMappings.length}, Unmapped: ${unmappedHeaders.length}, Ignored: ${ignoredHeaders.length}`);
+
         if (currentMappings.length === 0) {
+            let errorMessage = "No field mappings to save for this template.";
+            
+            if (unmappedHeaders.length > 0) {
+                errorMessage += `\n\nUnmapped headers (${unmappedHeaders.length}): ${unmappedHeaders.slice(0, 3).join(', ')}${unmappedHeaders.length > 3 ? '...' : ''}`;
+                errorMessage += "\n\nPlease select field mappings from the dropdowns or choose 'Ignore this Field' for headers you don't want to include.";
+            }
+            
+            if (ignoredHeaders.length > 0 && unmappedHeaders.length === 0) {
+                errorMessage += `\n\nAll ${ignoredHeaders.length} headers are set to 'Ignore'. Please map at least one header to create a template.`;
+            }
+            
             console.warn("[triggerSaveTemplateWorkflow] No valid mappings found to save for template.");
-            displayMessage("No field mappings to save for this template.", true);
+            displayMessage(errorMessage, true);
+            return;
+        }
+
+        // Show confirmation with mapping summary
+        const confirmMessage = `Save template "${templateName}"?\n\n` +
+            `✓ ${currentMappings.length} field(s) mapped\n` +
+            `${ignoredHeaders.length > 0 ? `- ${ignoredHeaders.length} field(s) ignored\n` : ''}` +
+            `${unmappedHeaders.length > 0 ? `⚠ ${unmappedHeaders.length} field(s) unmapped\n` : ''}`;
+        
+        if (!confirm(confirmMessage)) {
+            console.log("[triggerSaveTemplateWorkflow] User cancelled template save.");
             return;
         }
 
@@ -944,7 +1044,8 @@ document.addEventListener('DOMContentLoaded', function () {
                                 // --- Create Save Template Button Box (Re-introduced) ---
                                 const saveTemplateButtonHTML = fileResult.success ? `
                                     <div class="save-template-box">
-                                        <button class="save-template-button btn btn-warning" data-file-identifier="${fileResult.filename}">Save as Template</button>
+                                        <button class="save-template-button btn btn-warning" data-file-identifier="${fileResult.filename}">💾 Save as Template</button>
+                                        <button class="ignore-unmapped-button btn btn-secondary btn-sm" data-file-identifier="${fileResult.filename}" title="Set all unmapped fields to 'Ignore'">🚫 Ignore Unmapped</button>
                                     </div>
                                 ` : '';
                                 // --- End Create Save Template Button Box ---
@@ -1238,6 +1339,11 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log("[Save Template Button Clicked] Target dataset:", target.dataset);
             const fileIdentifier = target.dataset.fileIdentifier;
             window.triggerSaveTemplateWorkflow(fileIdentifier, target);
+            
+        } else if (target.classList.contains('ignore-unmapped-button')) {
+            console.log("[Ignore Unmapped Button Clicked] Target dataset:", target.dataset);
+            const fileIdentifier = target.dataset.fileIdentifier;
+            window.setUnmappedFieldsToIgnore(fileIdentifier, target);
         } else if (target.classList.contains('chatbot-help-button')) {
             // ... (chatbot help button logic as before)
             console.log("[Chatbot Help Button Clicked] Target dataset:", target.dataset);
