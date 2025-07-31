@@ -480,7 +480,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Helper function to highlight unmapped fields
     function highlightUnmappedFields(fileEntryElement) {
-        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         let unmappedCount = 0;
         
         mappingRows.forEach(row => {
@@ -513,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Collect current headers
-        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         const headers = [];
         
         mappingRows.forEach(row => {
@@ -614,6 +614,52 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
+    // Debug function to test table structure
+    window.debugTableStructure = function(fileIdentifier) {
+        const fileEntryElement = document.querySelector(`[data-file-identifier="${fileIdentifier}"]`)?.closest('.file-entry');
+        if (!fileEntryElement) {
+            console.error("Could not find file entry element");
+            return;
+        }
+        
+        console.log("=== Table Structure Debug ===");
+        console.log("File entry element:", fileEntryElement);
+        
+        const allTables = fileEntryElement.querySelectorAll('table');
+        console.log(`Found ${allTables.length} tables:`);
+        
+        allTables.forEach((table, i) => {
+            console.log(`Table ${i}:`);
+            console.log(`  Classes: ${table.className}`);
+            console.log(`  Rows: ${table.querySelectorAll('tr').length}`);
+            console.log(`  Selects: ${table.querySelectorAll('select').length}`);
+            
+            const rows = table.querySelectorAll('tr');
+            rows.forEach((row, j) => {
+                const cells = row.querySelectorAll('td, th');
+                if (cells.length > 0) {
+                    const header = cells[0]?.textContent || '';
+                    const select = cells[1]?.querySelector('select');
+                    const value = select?.value || 'no-select';
+                    console.log(`    Row ${j}: "${header}" → "${value}"`);
+                }
+            });
+        });
+        
+        // Test different selectors
+        const selectors = [
+            '.mapping-table-rows-only tbody tr',
+            '.mapping-table tbody tr',
+            '.mapping-table-rows-only tr',
+            'table tr'
+        ];
+        
+        selectors.forEach(selector => {
+            const rows = fileEntryElement.querySelectorAll(selector);
+            console.log(`Selector "${selector}": ${rows.length} rows`);
+        });
+    };
+
     // Function to set all unmapped fields to "Ignore"
     window.setUnmappedFieldsToIgnore = function(fileIdentifier, contextElement) {
         console.log("[setUnmappedFieldsToIgnore] Called for fileIdentifier:", fileIdentifier);
@@ -624,7 +670,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         let changedCount = 0;
         
         mappingRows.forEach(row => {
@@ -678,12 +724,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const unmappedHeaders = [];
         const ignoredHeaders = [];
         
-        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
-        mappingRows.forEach(row => {
+        // Try multiple selectors to find the mapping rows
+        let mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
+        if (mappingRows.length === 0) {
+            // Fallback to old selector
+            mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        }
+        if (mappingRows.length === 0) {
+            // Try without tbody
+            mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tr');
+        }
+        
+        console.log(`[triggerSaveTemplateWorkflow] Found ${mappingRows.length} mapping rows using selector`);
+        
+        mappingRows.forEach((row, index) => {
             const originalHeader = row.cells[0].textContent;
             const mappedFieldSelect = row.cells[1].querySelector('select');
             const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
             const confidence = row.cells[2].textContent; // This is display text like "80%"
+
+            console.log(`[triggerSaveTemplateWorkflow] Row ${index}: Header="${originalHeader}", MappedField="${mappedField}", HasSelect=${!!mappedFieldSelect}`);
 
             if (mappedField && mappedField !== '__IGNORE__' && mappedField !== '__CREATE_NEW__') {
                 // Valid mapping
@@ -692,12 +752,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     mapped_field: mappedField,
                     // confidence: parseFloat(confidence) / 100 || 0 // Example if confidence was just number
                 });
+                console.log(`[triggerSaveTemplateWorkflow] Added valid mapping: ${originalHeader} → ${mappedField}`);
             } else if (mappedField === '__IGNORE__') {
                 // Explicitly ignored field
                 ignoredHeaders.push(originalHeader);
+                console.log(`[triggerSaveTemplateWorkflow] Ignored header: ${originalHeader}`);
             } else {
                 // Unmapped field (empty or not selected)
                 unmappedHeaders.push(originalHeader);
+                console.log(`[triggerSaveTemplateWorkflow] Unmapped header: ${originalHeader} (value: "${mappedField}")`);
             }
         });
 
@@ -707,13 +770,33 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentMappings.length === 0) {
             let errorMessage = "No field mappings to save for this template.";
             
+            // Enhanced debugging information
+            console.error("[triggerSaveTemplateWorkflow] Debugging info:");
+            console.error("- Total mapping rows found:", mappingRows.length);
+            console.error("- Unmapped headers:", unmappedHeaders.length);
+            console.error("- Ignored headers:", ignoredHeaders.length);
+            console.error("- File entry element:", fileEntryElement);
+            
+            // Check if we have any mapping tables at all
+            const allTables = fileEntryElement.querySelectorAll('table');
+            console.error("- Total tables found:", allTables.length);
+            allTables.forEach((table, i) => {
+                console.error(`  Table ${i} classes:`, table.className);
+                console.error(`  Table ${i} rows:`, table.querySelectorAll('tr').length);
+            });
+            
             if (unmappedHeaders.length > 0) {
                 errorMessage += `\n\nUnmapped headers (${unmappedHeaders.length}): ${unmappedHeaders.slice(0, 3).join(', ')}${unmappedHeaders.length > 3 ? '...' : ''}`;
                 errorMessage += "\n\nPlease select field mappings from the dropdowns or choose 'Ignore this Field' for headers you don't want to include.";
+                errorMessage += "\n\nTip: Try using the '🤖 AI Remap' button to automatically map fields, then save the template.";
             }
             
             if (ignoredHeaders.length > 0 && unmappedHeaders.length === 0) {
                 errorMessage += `\n\nAll ${ignoredHeaders.length} headers are set to 'Ignore'. Please map at least one header to create a template.`;
+            }
+            
+            if (mappingRows.length === 0) {
+                errorMessage += "\n\n⚠️ Debug: No mapping table found. Please refresh the page and try again.";
             }
             
             console.warn("[triggerSaveTemplateWorkflow] No valid mappings found to save for template.");
