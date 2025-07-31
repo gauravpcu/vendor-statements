@@ -32,12 +32,32 @@ def get_headers_from_excel(file_path, skip_rows=0):
     Reads an Excel file (first sheet) and returns its headers, skipping specified number of rows.
     """
     try:
+        # Log more details about the Excel file structure
+        logger.info(f"Attempting to extract headers from Excel '{file_path}' with skip_rows={skip_rows}")
+        
+        # Try to get some information about the Excel file structure
+        try:
+            xl = pd.ExcelFile(file_path)
+            logger.info(f"Excel file '{file_path}' contains sheets: {xl.sheet_names}")
+            
+            # Read a small preview of the file to log structure
+            preview_df = pd.read_excel(file_path, sheet_name=0, nrows=15)
+            non_empty_rows = preview_df.count(axis=1) > 0
+            logger.info(f"Excel preview: File has {len(preview_df)} rows, first non-empty rows are: {list(non_empty_rows[non_empty_rows].index[:5])}")
+        except Exception as preview_err:
+            logger.warning(f"Could not generate Excel preview for '{file_path}': {preview_err}")
+        
         # nrows=0 should get columns from the first non-skipped row
         df_header = pd.read_excel(file_path, sheet_name=0, skiprows=skip_rows, nrows=0)
         headers = df_header.columns.tolist()
+        
         if not headers: # If skiprows resulted in reading an empty part of the file
             logger.warning(f"No headers found in Excel '{file_path}' after skipping {skip_rows} rows.")
+            # Suggest possible skip_rows values based on template names
+            logger.info(f"For Excel files like '{file_path}', consider using the 'Basic' template (skip_rows=10) or checking other templates")
             return []
+        
+        logger.info(f"Successfully extracted {len(headers)} headers from Excel '{file_path}' with skip_rows={skip_rows}: {headers[:5]}...")
         return headers
     except pd.errors.EmptyDataError: # xlrd can raise this, or if sheet is truly empty after skip
         logger.warning(f"EmptyDataError for Excel '{file_path}' after skipping {skip_rows} rows.")

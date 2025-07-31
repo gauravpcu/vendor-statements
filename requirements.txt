@@ -8,10 +8,14 @@ openpyxl
 xlrd
 python-magic
 pdfplumber
-
-# Optional, for local development if you have tesseract installed
-# pytesseract
-# pdf2image
-
-# If you were using gunicorn for local serving, you can add it back
-# gunicorn
+pytesseract
+pdf2image
+gunicorn
+docling
+fastapi
+uvicorn
+python-multipart
+# AWS Lambda dependencies
+mangum
+boto3
+aws-lambda-powertools
