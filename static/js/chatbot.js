@@ -7,6 +7,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const chatbotSendButton = document.getElementById('chatbotSendButton');
 
     let isChatbotOpen = true; // Assuming it starts open or visibility is controlled by CSS
+    
+    // Chatbot context variables
+    let currentChatbotOriginalHeader = null;
+    let currentChatbotMappedField = null;
+    let currentChatbotFileElement = null;
+    let currentChatbotFileIdentifier = null;
 
     // Function to toggle chatbot visibility
     window.toggleChatbot = function() {
@@ -18,6 +24,38 @@ document.addEventListener('DOMContentLoaded', function () {
         if (toggleChatbotButton) {
             toggleChatbotButton.textContent = isChatbotOpen ? '–' : '+';
         }
+    };
+
+    // Function to open/show the chatbot panel
+    window.openChatbotPanel = function() {
+        if (chatbotPanel && chatbotPanel.classList.contains('hidden')) {
+            chatbotPanel.classList.remove('hidden');
+            isChatbotOpen = true;
+            if (toggleChatbotButton) {
+                toggleChatbotButton.textContent = '–';
+            }
+        }
+    };
+
+    // Chatbot context management functions
+    window.setCurrentChatbotContext = function(originalHeader, mappedField, fileElement, fileIdentifier) {
+        currentChatbotOriginalHeader = originalHeader;
+        currentChatbotMappedField = mappedField;
+        currentChatbotFileElement = fileElement;
+        currentChatbotFileIdentifier = fileIdentifier;
+        console.log('[Chatbot] Context set:', { originalHeader, mappedField, fileIdentifier });
+    };
+
+    window.getCurrentChatbotOriginalHeader = function() {
+        return currentChatbotOriginalHeader;
+    };
+
+    window.clearCurrentChatbotOriginalHeader = function() {
+        currentChatbotOriginalHeader = null;
+        currentChatbotMappedField = null;
+        currentChatbotFileElement = null;
+        currentChatbotFileIdentifier = null;
+        console.log('[Chatbot] Context cleared');
     };
 
     // Function to add a bot message (text or HTML element) to the chat

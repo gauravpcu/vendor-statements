@@ -1,0 +1,21 @@
+Flask
+Werkzeug
+python-dotenv
+openai
+requests
+pandas
+openpyxl
+xlrd
+python-magic
+pdfplumber
+pytesseract
+pdf2image
+gunicorn
+fastapi
+uvicorn
+python-multipart
+# AWS Lambda dependencies
+mangum
+boto3
+aws-lambda-powertools
+# Exclude docling

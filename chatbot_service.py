@@ -13,11 +13,17 @@ def initialize_chatbot_service(field_definitions):
     FIELD_DEFINITIONS_CS = field_definitions
     logger.info(f"chatbot_service initialized with {len(FIELD_DEFINITIONS_CS)} field definitions.")
 
-def get_mapping_suggestions(original_header, current_mapped_field, all_field_definitions=None):
+def get_mapping_suggestions(original_header, current_mapped_field, all_field_definitions=None, auto_apply_best=False):
     """
     Generates mapping suggestions for a given original header.
     Uses Azure OpenAI if configured, otherwise falls back to alias-based logic.
     Uses the globally initialized FIELD_DEFINITIONS_CS if all_field_definitions is not provided.
+    
+    Args:
+        original_header: The original header text to map
+        current_mapped_field: Currently mapped field (to exclude from suggestions)
+        all_field_definitions: Field definitions to use (optional)
+        auto_apply_best: If True, marks the best suggestion for auto-application
     """
     target_definitions = all_field_definitions if all_field_definitions is not None else FIELD_DEFINITIONS_CS
     if not target_definitions:
@@ -29,10 +35,27 @@ def get_mapping_suggestions(original_header, current_mapped_field, all_field_def
     if azure_openai_configured and azure_oai_client:
         standard_field_names = list(target_definitions.keys())
         prompt = f"""Context: A user is reviewing field mappings for a document. For the original header "{original_header}", it is currently mapped to "{current_mapped_field}". The user is requesting alternative suggestions.
-Instruction: Please suggest 2-3 alternative standard field names from the following list that "{original_header}" could map to. Exclude "{current_mapped_field}" from your suggestions. For each suggestion, provide a brief reason (10-15 words).
+
+Instruction: Analyze the header "{original_header}" and suggest 2-3 alternative standard field names from the following list. Exclude "{current_mapped_field}" from your suggestions.
+
 Standard Field Names: {json.dumps(standard_field_names)}
-Format hint: Respond ONLY with a valid JSON array of objects, where each object has keys "suggested_field" and "reason". For example: [{{"suggested_field": "FIELD_NAME_1", "reason": "..."}}, {{"suggested_field": "FIELD_NAME_2", "reason": "..."}}]
-If no other suitable suggestions are found from the list, return an empty JSON array [].
+
+For each suggestion, provide:
+1. "suggested_field": The field name from the list
+2. "reason": Brief explanation (10-15 words)
+3. "confidence": Confidence score from 0.0 to 1.0 (1.0 = perfect match)
+4. "auto_apply": true if this is the best match and should be auto-applied
+
+Rules:
+- Order suggestions by confidence (highest first)
+- Mark the best suggestion with "auto_apply": true if confidence > 0.8
+- Consider semantic meaning, not just keyword matching
+- Look for common abbreviations and variations
+
+Format: Respond ONLY with a valid JSON array of objects like:
+[{{"suggested_field": "FIELD_NAME", "reason": "explanation", "confidence": 0.95, "auto_apply": true}}]
+
+If no suitable suggestions found, return empty array [].
 """
         try:
             logger.info(f"Requesting mapping suggestions from Azure OpenAI for header: '{original_header}', current map: '{current_mapped_field}'")
@@ -92,12 +115,17 @@ If no other suitable suggestions are found from the list, return an empty JSON a
         field_name_lower = field_name.lower()
         field_name_keywords = set(field_name_lower.replace("_", " ").replace("-", " ").split())
         if original_header_keywords.intersection(field_name_keywords):
-             fallback_suggestions.append({
+            # Calculate confidence based on keyword overlap
+            overlap_ratio = len(original_header_keywords.intersection(field_name_keywords)) / len(original_header_keywords.union(field_name_keywords))
+            confidence = min(0.9, overlap_ratio + 0.1)  # Cap at 0.9 for fallback
+            fallback_suggestions.append({
                 'suggested_field': field_name,
-                'reason': f'Shares keywords with standard field name.'
+                'reason': f'Shares keywords with standard field name.',
+                'confidence': confidence,
+                'auto_apply': confidence > 0.8
             })
-             if len(fallback_suggestions) >=3: break # Limit suggestions
-             continue # Move to next field_name if matched
+            if len(fallback_suggestions) >=3: break # Limit suggestions
+            continue # Move to next field_name if matched
 
         # Check against aliases
         for alias in aliases:
@@ -107,9 +135,14 @@ If no other suitable suggestions are found from the list, return an empty JSON a
             # More sophisticated fuzzy matching could be added here later
             if original_header_keywords.intersection(alias_keywords):
                 if not any(s['suggested_field'] == field_name for s in fallback_suggestions): # Avoid duplicates for same field
+                    # Calculate confidence based on alias match
+                    overlap_ratio = len(original_header_keywords.intersection(alias_keywords)) / len(original_header_keywords.union(alias_keywords))
+                    confidence = min(0.85, overlap_ratio + 0.15)  # Slightly higher for alias matches
                     fallback_suggestions.append({
                         'suggested_field': field_name,
-                        'reason': f'Shares keywords with alias: "{alias}".'
+                        'reason': f'Shares keywords with alias: "{alias}".',
+                        'confidence': confidence,
+                        'auto_apply': confidence > 0.8
                     })
                 break # Found a matching alias for this field_name, move to next field_name
 
@@ -118,9 +151,13 @@ If no other suitable suggestions are found from the list, return an empty JSON a
 
     if not suggestions and not fallback_suggestions: # If LLM failed and fallback also found nothing
         logger.info(f"No suggestions found for header '{original_header}' via LLM or fallback.")
-        return [{'suggested_field': 'N/A', 'reason': 'No alternative suggestions found.'}]
+        return [{'suggested_field': 'N/A', 'reason': 'No alternative suggestions found.', 'confidence': 0.0, 'auto_apply': False}]
 
-    return fallback_suggestions if not suggestions else suggestions # Prefer LLM if it had any, else fallback.
+    # Sort suggestions by confidence (highest first)
+    final_suggestions = suggestions if suggestions else fallback_suggestions
+    final_suggestions.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+    
+    return final_suggestions
 
 if __name__ == '__main__':
     # Basic testing (requires FIELD_DEFINITIONS to be available if app.py isn't running)

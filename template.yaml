@@ -1,0 +1,84 @@
+# AWS SAM template for deploying FastAPI to Lambda
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: 'SAM Template for Vendor Statements API'
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+    Description: API Gateway stage name
+  BucketName:
+    Type: String
+    Description: S3 bucket name for file storage
+    Default: vendor-statements-storage
+
+Globals:
+  Function:
+    Timeout: 60  # Increased for file processing
+    MemorySize: 1024
+    Environment:
+      Variables:
+        STAGE_PREFIX: !Sub '/${StageName}'
+        S3_BUCKET_NAME: !Ref BucketName
+
+Resources:
+  VendorStatementsFunction:
+    Type: 'AWS::Serverless::Function'
+    Metadata:
+      BuildMethod: python3.10
+      BuildProperties:
+        RequirementsFile: requirements-lambda.txt  # Use Lambda-specific requirements
+    Properties:
+      CodeUri: .
+      Handler: lambda_handler.handler
+      Runtime: python3.10
+      Architectures:
+        - x86_64
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref VendorStatementsApi
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref BucketName
+
+  VendorStatementsApi:
+    Type: 'AWS::Serverless::Api'
+    Properties:
+      StageName: !Ref StageName
+      BinaryMediaTypes:
+        - '*/*'  # Handle binary data (e.g., file uploads)
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"  # Configure for specific domains in production
+
+  StorageBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'  # Configure for specific domains in production
+
+Outputs:
+  ApiUrl:
+    Description: 'API Gateway URL'
+    Value: !Sub 'https://${VendorStatementsApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/'
+  
+  S3BucketName:
+    Description: 'S3 bucket for file storage'
+    Value: !Ref StorageBucket

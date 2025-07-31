@@ -1,20 +1,62 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const templatesTableContainer = document.getElementById('templatesTableContainer');
     const loadingMessage = document.getElementById('loadingMessage');
     const errorMessageDiv = document.getElementById('errorMessage');
 
     function displayError(message) {
         if (loadingMessage) loadingMessage.style.display = 'none';
-        errorMessageDiv.textContent = message;
+        const errorText = document.getElementById('errorText');
+        if (errorText) {
+            errorText.textContent = message;
+        }
         errorMessageDiv.style.display = 'block';
         // Clear previous table if any
         const existingTable = templatesTableContainer.querySelector('table');
         if (existingTable) existingTable.remove();
+
+        // Also show as notification for better UX
+        showNotification(message, 'error');
     }
 
-    function displaySuccessMessage(message) {
-        // For now, using alert. Could be a temporary div.
-        alert(message);
+    function showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            max-width: 400px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            animation: slideInRight 0.3s ease-out;
+        `;
+
+        // Set background color based on type
+        const colors = {
+            success: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            error: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            warning: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            info: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+        };
+        notification.style.background = colors[type] || colors.info;
+
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        // Remove after 5 seconds
+        setTimeout(() => {
+            notification.style.animation = 'slideOutRight 0.3s ease-out';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 5000);
     }
 
     function fetchAndDisplayTemplates() {
@@ -36,18 +78,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (existingTable) existingTable.remove();
 
                 if (!data.templates || !Array.isArray(data.templates) || data.templates.length === 0) {
-                    templatesTableContainer.innerHTML = '<p>No templates found.</p>'; // Replace everything
+                    templatesTableContainer.innerHTML = `
+                        <div class="text-center" style="padding: 40px; color: #6c757d;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;">📋</div>
+                            <h3>No Templates Found</h3>
+                            <p>Create your first template to get started with automated processing.</p>
+                        </div>
+                    `;
                     return;
                 }
 
+                // Add template statistics
+                const statsDiv = document.createElement('div');
+                statsDiv.className = 'mb-3';
+                statsDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span style="color: #6c757d;">
+                            📊 ${data.templates.length} template${data.templates.length !== 1 ? 's' : ''} available
+                        </span>
+                    </div>
+                `;
+                templatesTableContainer.appendChild(statsDiv);
+
                 const table = document.createElement('table');
+                table.className = 'table';
                 table.innerHTML = `
                     <thead>
                         <tr>
-                            <th>Template Name</th>
-                            <th>Filename</th>
-                            <th>Created On</th>
-                            <th>Actions</th>
+                            <th>📋 Template Name</th>
+                            <th>📁 Filename</th>
+                            <th>📅 Created On</th>
+                            <th>⚙️ Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -88,9 +149,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     const actionsTd = document.createElement('td');
                     const deleteButton = document.createElement('button');
-                    deleteButton.classList.add('delete-template-btn'); // Class for styling and event delegation
+                    deleteButton.classList.add('delete-template-btn', 'btn', 'btn-danger', 'btn-sm');
                     deleteButton.dataset.filename = template.file_id;
-                    deleteButton.textContent = 'Delete';
+                    deleteButton.innerHTML = '🗑️ Delete';
                     actionsTd.appendChild(deleteButton);
                     tr.appendChild(actionsTd);
 
@@ -99,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Make sure loading message is gone before adding table
                 const currentLoadingMsg = document.getElementById('loadingMessage');
-                if(currentLoadingMsg) currentLoadingMsg.remove();
+                if (currentLoadingMsg) currentLoadingMsg.remove();
 
                 templatesTableContainer.appendChild(table);
             })
@@ -110,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Event listener for delete buttons (using event delegation)
-    templatesTableContainer.addEventListener('click', function(event) {
+    templatesTableContainer.addEventListener('click', function (event) {
         if (event.target.classList.contains('delete-template-btn')) {
             const templateFilename = event.target.dataset.filename;
             if (!templateFilename) {
@@ -122,27 +183,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 fetch(`/delete_template/${encodeURIComponent(templateFilename)}`, {
                     method: 'DELETE',
                 })
-                .then(response => {
-                    // Regardless of ok status, try to parse JSON, as error messages might be in JSON body
-                    return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
-                })
-                .then(result => {
-                    if (result.ok) {
-                        displaySuccessMessage(result.data.message || 'Template deleted successfully.');
-                        fetchAndDisplayTemplates(); // Refresh the list
-                    } else {
-                        // Server responded with an error status code (4xx, 5xx)
-                        const errorMsg = result.data.error || `Failed to delete template. Status: ${result.status}`;
-                        alert(`Error: ${errorMsg}`); // Using alert for error feedback from delete
-                        // Optionally, call fetchAndDisplayTemplates() even on error if the list might have changed
-                        // or if some deletions might succeed while others fail (though less likely with single delete)
-                    }
-                })
-                .catch(error => {
-                    // Network error or issue with parsing the JSON response itself
-                    console.error('Error deleting template:', error);
-                    alert('An unexpected error occurred while trying to delete the template. ' + error.message);
-                });
+                    .then(response => {
+                        // Regardless of ok status, try to parse JSON, as error messages might be in JSON body
+                        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+                    })
+                    .then(result => {
+                        if (result.ok) {
+                            showNotification(result.data.message || 'Template deleted successfully.', 'success');
+                            fetchAndDisplayTemplates(); // Refresh the list
+                        } else {
+                            // Server responded with an error status code (4xx, 5xx)
+                            const errorMsg = result.data.error || `Failed to delete template. Status: ${result.status}`;
+                            showNotification(`Error: ${errorMsg}`, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        // Network error or issue with parsing the JSON response itself
+                        console.error('Error deleting template:', error);
+                        showNotification('An unexpected error occurred while trying to delete the template. ' + error.message, 'error');
+                    });
             }
         }
     });
@@ -157,10 +216,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load field definitions for the dropdown
     let fieldDefinitions = {};
-    
+
     // Try to get field definitions from the global variable or fetch them
-    if (typeof FIELD_DEFINITIONS !== 'undefined') {
-        fieldDefinitions = FIELD_DEFINITIONS;
+    if (typeof window.FIELD_DEFINITIONS !== 'undefined') {
+        fieldDefinitions = window.FIELD_DEFINITIONS;
         populateFieldOptions();
     } else {
         // Fetch field definitions if not available globally
@@ -193,7 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
         mappedFieldSelects.forEach(select => {
             // Clear existing options except the first one
             select.innerHTML = '<option value="">Select Field...</option>';
-            
+
             // Add field definition options
             Object.keys(fieldDefinitions).forEach(fieldKey => {
                 const option = document.createElement('option');
@@ -204,29 +263,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    createNewTemplateBtn.addEventListener('click', function() {
-        createTemplateModal.style.display = 'block';
+    createNewTemplateBtn.addEventListener('click', function () {
+        createTemplateModal.classList.add('show');
         populateFieldOptions(); // Ensure options are populated
     });
 
-    cancelCreateTemplate.addEventListener('click', function() {
-        createTemplateModal.style.display = 'none';
+    function closeModal() {
+        createTemplateModal.classList.remove('show');
         createTemplateForm.reset();
         // Reset to single mapping row
         const mappingRows = fieldMappingsContainer.querySelectorAll('.field-mapping-row');
         for (let i = 1; i < mappingRows.length; i++) {
             mappingRows[i].remove();
         }
-    });
+    }
+
+    cancelCreateTemplate.addEventListener('click', closeModal);
+
+    // Add event listener for the footer cancel button
+    const cancelCreateTemplateFooter = document.getElementById('cancelCreateTemplateFooter');
+    if (cancelCreateTemplateFooter) {
+        cancelCreateTemplateFooter.addEventListener('click', closeModal);
+    }
 
     // Close modal when clicking outside
-    createTemplateModal.addEventListener('click', function(event) {
+    createTemplateModal.addEventListener('click', function (event) {
         if (event.target === createTemplateModal) {
-            createTemplateModal.style.display = 'none';
+            closeModal();
         }
     });
 
-    addMappingBtn.addEventListener('click', function() {
+    addMappingBtn.addEventListener('click', function () {
         const newRow = document.createElement('div');
         newRow.className = 'field-mapping-row';
         newRow.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px;';
@@ -238,7 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <button type="button" class="remove-mapping-btn" style="padding: 8px;">Remove</button>
         `;
         fieldMappingsContainer.appendChild(newRow);
-        
+
         // Populate the new select with field options
         const newSelect = newRow.querySelector('.mapped-field');
         Object.keys(fieldDefinitions).forEach(fieldKey => {
@@ -250,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Handle remove mapping button clicks
-    fieldMappingsContainer.addEventListener('click', function(event) {
+    fieldMappingsContainer.addEventListener('click', function (event) {
         if (event.target.classList.contains('remove-mapping-btn')) {
             const row = event.target.closest('.field-mapping-row');
             if (fieldMappingsContainer.querySelectorAll('.field-mapping-row').length > 1) {
@@ -261,12 +328,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    createTemplateForm.addEventListener('submit', function(event) {
+    createTemplateForm.addEventListener('submit', function (event) {
         event.preventDefault();
-        
+
         const templateName = document.getElementById('templateName').value.trim();
         const skipRows = parseInt(document.getElementById('skipRows').value) || 0;
-        
+
         if (!templateName) {
             displayError('Template name is required.');
             return;
@@ -275,11 +342,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Collect field mappings
         const mappingRows = fieldMappingsContainer.querySelectorAll('.field-mapping-row');
         const fieldMappings = [];
-        
+
         mappingRows.forEach(row => {
             const originalHeader = row.querySelector('.original-header').value.trim();
             const mappedField = row.querySelector('.mapped-field').value;
-            
+
             if (originalHeader && mappedField) {
                 fieldMappings.push({
                     original_header: originalHeader,
@@ -302,6 +369,12 @@ document.addEventListener('DOMContentLoaded', function() {
             skip_rows: skipRows
         };
 
+        // Show loading state
+        const submitButton = document.querySelector('#createTemplateForm button[type="submit"]');
+        const originalText = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = '⏳ Creating...';
+
         // Save template
         fetch('/save_template', {
             method: 'POST',
@@ -310,21 +383,25 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify(templateData)
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success' || data.message) {
-                displaySuccessMessage(data.message || 'Template created successfully!');
-                createTemplateModal.style.display = 'none';
-                createTemplateForm.reset();
-                fetchAndDisplayTemplates(); // Refresh the template list
-            } else {
-                displayError(data.error || 'Failed to create template.');
-            }
-        })
-        .catch(error => {
-            console.error('Error creating template:', error);
-            displayError('Error creating template: ' + error.message);
-        });
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' || data.message) {
+                    showNotification(data.message || 'Template created successfully!', 'success');
+                    closeModal();
+                    fetchAndDisplayTemplates(); // Refresh the template list
+                } else {
+                    displayError(data.error || 'Failed to create template.');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating template:', error);
+                displayError('Error creating template: ' + error.message);
+            })
+            .finally(() => {
+                // Restore button state
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalText;
+            });
     });
 
     // Initial call to fetch and display templates
