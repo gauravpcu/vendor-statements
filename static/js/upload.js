@@ -502,6 +502,118 @@ document.addEventListener('DOMContentLoaded', function () {
         return unmappedCount;
     }
 
+    // Function to trigger AI remapping of headers
+    window.triggerAIRemapping = function(fileIdentifier, contextElement) {
+        console.log("[triggerAIRemapping] Called for fileIdentifier:", fileIdentifier);
+        const fileEntryElement = contextElement.closest('.file-entry');
+        if (!fileEntryElement) {
+            console.error("[triggerAIRemapping] Could not find parent .file-entry for context element.");
+            displayMessage("Error: Could not find file context.", true);
+            return;
+        }
+
+        // Collect current headers
+        const mappingRows = fileEntryElement.querySelectorAll('.mapping-table tbody tr');
+        const headers = [];
+        
+        mappingRows.forEach(row => {
+            const originalHeader = row.cells[0].textContent;
+            headers.push(originalHeader);
+        });
+
+        if (headers.length === 0) {
+            displayMessage("No headers found to remap.", true);
+            return;
+        }
+
+        // Show loading state
+        const button = contextElement;
+        const originalText = button.textContent;
+        button.textContent = '🤖 AI Analyzing...';
+        button.disabled = true;
+        
+        displayMessage(`🤖 AI is analyzing ${headers.length} headers for intelligent mapping...`);
+
+        // Call AI remapping API
+        fetch('/ai_remap_headers', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                file_identifier: fileIdentifier,
+                headers: headers
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`AI remapping failed: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("[triggerAIRemapping] AI response:", data);
+            
+            if (data.success && data.field_mappings) {
+                // Apply AI mappings to the UI
+                let appliedCount = 0;
+                let highConfidenceCount = 0;
+                
+                mappingRows.forEach((row, index) => {
+                    const mappedFieldSelect = row.cells[1].querySelector('select');
+                    const mapping = data.field_mappings[index];
+                    
+                    if (mapping && mapping.mapped_field && mapping.mapped_field !== 'N/A') {
+                        // Find the option in the select
+                        const option = Array.from(mappedFieldSelect.options).find(opt => opt.value === mapping.mapped_field);
+                        if (option) {
+                            mappedFieldSelect.value = mapping.mapped_field;
+                            appliedCount++;
+                            
+                            // Update confidence display
+                            const confidenceCell = row.cells[2];
+                            const confidence = mapping.confidence_score || 0;
+                            confidenceCell.textContent = `${confidence}%`;
+                            
+                            // Highlight high-confidence mappings
+                            if (confidence >= 80) {
+                                highConfidenceCount++;
+                                row.style.backgroundColor = '#d4edda'; // Light green
+                                row.style.border = '1px solid #c3e6cb';
+                            } else if (confidence >= 60) {
+                                row.style.backgroundColor = '#fff3cd'; // Light yellow
+                                row.style.border = '1px solid #ffeaa7';
+                            }
+                        }
+                    }
+                });
+                
+                const analysis = data.analysis || {};
+                const message = `🤖 AI Mapping Complete!\n\n` +
+                    `✅ ${appliedCount} fields mapped\n` +
+                    `🎯 ${highConfidenceCount} high-confidence mappings\n` +
+                    `📊 ${analysis.unmapped || 0} fields unmapped\n\n` +
+                    `Green = High confidence (80%+)\n` +
+                    `Yellow = Medium confidence (60-79%)\n` +
+                    `Review and adjust as needed.`;
+                
+                displayMessage(message);
+                console.log(`[triggerAIRemapping] Applied ${appliedCount} AI mappings, ${highConfidenceCount} high-confidence`);
+            } else {
+                displayMessage("AI remapping completed but no mappings were applied.", true);
+            }
+        })
+        .catch(error => {
+            console.error("[triggerAIRemapping] Error:", error);
+            displayMessage(`AI remapping failed: ${error.message}`, true);
+        })
+        .finally(() => {
+            // Restore button state
+            button.textContent = originalText;
+            button.disabled = false;
+        });
+    };
+
     // Function to set all unmapped fields to "Ignore"
     window.setUnmappedFieldsToIgnore = function(fileIdentifier, contextElement) {
         console.log("[setUnmappedFieldsToIgnore] Called for fileIdentifier:", fileIdentifier);
@@ -1045,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 const saveTemplateButtonHTML = fileResult.success ? `
                                     <div class="save-template-box">
                                         <button class="save-template-button btn btn-warning" data-file-identifier="${fileResult.filename}">💾 Save as Template</button>
+                                        <button class="ai-remap-button btn btn-info btn-sm" data-file-identifier="${fileResult.filename}" title="Use AI to intelligently remap headers">🤖 AI Remap</button>
                                         <button class="ignore-unmapped-button btn btn-secondary btn-sm" data-file-identifier="${fileResult.filename}" title="Set all unmapped fields to 'Ignore'">🚫 Ignore Unmapped</button>
                                     </div>
                                 ` : '';
@@ -1339,6 +1452,11 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log("[Save Template Button Clicked] Target dataset:", target.dataset);
             const fileIdentifier = target.dataset.fileIdentifier;
             window.triggerSaveTemplateWorkflow(fileIdentifier, target);
+            
+        } else if (target.classList.contains('ai-remap-button')) {
+            console.log("[AI Remap Button Clicked] Target dataset:", target.dataset);
+            const fileIdentifier = target.dataset.fileIdentifier;
+            window.triggerAIRemapping(fileIdentifier, target);
             
         } else if (target.classList.contains('ignore-unmapped-button')) {
             console.log("[Ignore Unmapped Button Clicked] Target dataset:", target.dataset);

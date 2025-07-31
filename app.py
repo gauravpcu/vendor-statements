@@ -413,12 +413,24 @@ def upload_files():
                                 # results_entry["skip_rows"] is already set from template
                                 results_entry["message"] = f"Template '{results_entry['applied_template_name']}' auto-applied with {results_entry['skip_rows']} skip rows."
                                 logger.info(f"Applied template mappings for '{original_filename_for_vendor}'.")
-                            else: # No template applied, generate mappings
+                            else: # No template applied, generate intelligent AI mappings
+                                logger.info(f"No template found for '{vendor_name_from_file}'. Using Azure OpenAI for intelligent field mapping.")
                                 mappings = header_mapper.generate_mappings(actual_headers_from_file, FIELD_DEFINITIONS)
                                 results_entry["field_mappings"] = mappings
                                 # results_entry["skip_rows"] remains default 0 if no template
-                                results_entry["message"] = "Headers extracted and auto-mapped." # Default message
-                                logger.info(f"Generated {len(mappings)} mappings for {original_filename_for_vendor} (Type: {detected_type_name}).")
+                                
+                                # Analyze mapping quality and provide informative message
+                                high_confidence_count = sum(1 for m in mappings if m.get('confidence_score', 0) >= 80)
+                                total_mappings = len([m for m in mappings if m.get('mapped_field') != 'N/A'])
+                                
+                                if high_confidence_count >= len(mappings) * 0.7:  # 70% or more high confidence
+                                    results_entry["message"] = f"🤖 AI auto-mapped {high_confidence_count}/{len(mappings)} headers with high confidence."
+                                elif total_mappings > 0:
+                                    results_entry["message"] = f"🤖 AI mapped {total_mappings}/{len(mappings)} headers. Review and adjust as needed."
+                                else:
+                                    results_entry["message"] = f"🤖 AI analyzed {len(mappings)} headers. Manual mapping may be needed."
+                                
+                                logger.info(f"🤖 AI generated {len(mappings)} mappings for {original_filename_for_vendor}: {high_confidence_count} high-confidence, {total_mappings} total mapped.")
                         else: # No headers found in file, but header extraction itself didn't error
                             current_msg = results_entry.get("message", "")
                             if "successfully" in current_msg.lower() or "auto-mapped" in current_msg.lower() : # Avoid double "no headers" if already part of a success message
@@ -1045,6 +1057,51 @@ def storage_status():
     except Exception as e:
         logger.error(f"Error getting storage status: {e}")
         return jsonify({"error": f"Error getting storage status: {str(e)}"}), 500
+
+@app.route('/ai_remap_headers', methods=['POST'])
+def ai_remap_headers():
+    """Use Azure OpenAI to intelligently remap headers for a file"""
+    logger.info("Received request for /ai_remap_headers")
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        file_identifier = data.get('file_identifier')
+        headers = data.get('headers', [])
+        
+        if not file_identifier or not headers:
+            return jsonify({"error": "Missing file_identifier or headers"}), 400
+        
+        logger.info(f"🤖 AI remapping {len(headers)} headers for file: {file_identifier}")
+        
+        # Use intelligent batch mapping
+        mappings = header_mapper.generate_intelligent_batch_mapping(headers, FIELD_DEFINITIONS)
+        
+        # Analyze results
+        high_confidence_count = sum(1 for m in mappings if m.get('confidence_score', 0) >= 80)
+        total_mapped = len([m for m in mappings if m.get('mapped_field') != 'N/A'])
+        
+        response_data = {
+            "success": True,
+            "file_identifier": file_identifier,
+            "field_mappings": mappings,
+            "analysis": {
+                "total_headers": len(headers),
+                "high_confidence_mappings": high_confidence_count,
+                "total_mapped": total_mapped,
+                "unmapped": len(headers) - total_mapped
+            },
+            "message": f"🤖 AI analysis complete: {high_confidence_count} high-confidence mappings, {total_mapped} total mapped"
+        }
+        
+        logger.info(f"✅ AI remapping complete for {file_identifier}: {high_confidence_count}/{len(headers)} high-confidence")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Error in AI header remapping: {e}", exc_info=True)
+        return jsonify({"error": f"AI remapping failed: {str(e)}"}), 500
 
 @app.route('/preview_file/<path:filename>', methods=['GET'])
 def preview_file_route(filename):
