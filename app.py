@@ -112,6 +112,9 @@ if not app.config['INVOICE_VALIDATION_API_URL']:
 
 TEMP_PDF_DATA_FOR_EXTRACTION = {}
 
+# Global dictionary to store extracted text data for all processed files
+EXTRACTED_TEXT_CACHE = {}
+
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',
     'application/vnd.ms-excel': 'XLS',
@@ -340,7 +343,54 @@ def upload_files():
                             
                     results_entry["headers"] = actual_headers_from_file
 
-                    # 4. Determine Field Mappings (Template or Auto-generated), only if header extraction was successful
+                    # 4. Generate and cache extracted text data
+                    if results_entry["success"] and actual_headers_from_file:
+                        try:
+                            # Extract sample data for text generation
+                            sample_data_rows = []
+                            total_rows = 0
+                            
+                            if detected_type_name == "PDF":
+                                # Use cached PDF data
+                                if original_filename_for_vendor in TEMP_PDF_DATA_FOR_EXTRACTION:
+                                    pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION[original_filename_for_vendor]
+                                    sample_data_rows = pdf_data.get('data_rows', [])
+                                    total_rows = len(sample_data_rows)
+                            else:
+                                # Extract data for CSV/Excel files - create mappings for all headers to get all data
+                                all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in actual_headers_from_file]
+                                data_result = extract_data(effective_file_path_for_processing, detected_type_name, all_headers_mapping, skip_rows=current_skip_rows_for_extraction)
+                                if isinstance(data_result, list):
+                                    sample_data_rows = data_result
+                                    total_rows = len(data_result)
+                            
+                            # Generate extracted text
+                            extracted_text = generate_extracted_text(
+                                filename=results_entry["filename"],
+                                file_type=detected_type_name,
+                                headers=actual_headers_from_file,
+                                data_rows=sample_data_rows,
+                                total_rows=total_rows
+                            )
+                            
+                            # Cache the extracted text data (sanitized for JSON)
+                            cache_data = {
+                                "extracted_text": extracted_text,
+                                "headers": actual_headers_from_file,
+                                "sample_rows": sample_data_rows,  # All rows for full content view
+                                "total_rows": total_rows,
+                                "file_type": detected_type_name,
+                                "parsing_info": f"Successfully parsed {detected_type_name} with {len(actual_headers_from_file)} headers and {total_rows} rows"
+                            }
+                            EXTRACTED_TEXT_CACHE[results_entry["filename"]] = sanitize_data_for_json(cache_data)
+                            
+                            logger.info(f"Generated and cached extracted text for {results_entry['filename']}")
+                            
+                        except Exception as e_text:
+                            logger.error(f"Error generating extracted text for {results_entry['filename']}: {e_text}")
+                            # Don't fail the entire process if text generation fails
+                    
+                    # 5. Determine Field Mappings (Template or Auto-generated), only if header extraction was successful
                     if results_entry["success"]: # Check if header extraction above was successful
                         if actual_headers_from_file: # If headers were found
                             if template_applied_data:
@@ -406,6 +456,40 @@ def chatbot_suggest_mapping_route():
 
 
 # Helper function to convert NaT/NaN to None and Timestamps to ISO strings for JSON serialization
+def generate_extracted_text(filename, file_type, headers, data_rows, total_rows):
+    """Generate extracted text representation of file data"""
+    text_lines = []
+    text_lines.append(f"=== PARSED {file_type.upper()} CONTENT ===")
+    text_lines.append(f"File: {filename}")
+    text_lines.append(f"Headers Found: {len(headers)}")
+    text_lines.append(f"Total Rows: {total_rows}")
+    text_lines.append("")
+    
+    if headers:
+        text_lines.append("HEADERS:")
+        for i, header in enumerate(headers, 1):
+            text_lines.append(f"  {i}. {header}")
+        text_lines.append("")
+        
+        if data_rows:
+            text_lines.append("ALL DATA:")
+            for i, row in enumerate(data_rows, 1):
+                text_lines.append(f"Row {i}:")
+                if isinstance(row, dict):
+                    for header in headers:
+                        value = row.get(header, '')
+                        text_lines.append(f"  {header}: {value}")
+                else:
+                    # Handle case where row is a list
+                    for j, value in enumerate(row):
+                        header = headers[j] if j < len(headers) else f"Column_{j}"
+                        text_lines.append(f"  {header}: {value}")
+                text_lines.append("")
+    else:
+        text_lines.append("No headers found in file.")
+    
+    return "\n".join(text_lines)
+
 def sanitize_data_for_json(item):
     if isinstance(item, list):
         return [sanitize_data_for_json(x) for x in item]
@@ -728,17 +812,19 @@ def list_templates_route():
                         
                     templates.append({
                         'filename': filename,
+                        'file_id': filename,
                         'template_name': template_data.get('template_name', filename),
+                        'display_name': template_data.get('template_name', filename),
                         'creation_timestamp': template_data.get('creation_timestamp', 'Unknown')
                     })
                 except (IOError, json.JSONDecodeError) as e:
                     logger.error(f"Error reading template '{filename}': {e}")
                     
             logger.info(f"Successfully listed {len(templates)} templates.")
-            return jsonify(templates)
+            return jsonify({"templates": templates})
         else:
             logger.warning(f"Templates directory does not exist: {TEMPLATES_DIR}")
-            return jsonify([])
+            return jsonify({"templates": []})
             
     except Exception as e:
         logger.error(f"Error listing templates: {e}", exc_info=True)
@@ -931,6 +1017,167 @@ def field_definitions_route():
     """Get field definitions for template creation."""
     logger.info("Received request for /field_definitions")
     return jsonify(FIELD_DEFINITIONS)
+
+@app.route('/preview_file/<path:filename>', methods=['GET'])
+def preview_file_route(filename):
+    """Get a preview of the parsed/extracted file content."""
+    logger.info(f"Received request to preview parsed content for file: {filename}")
+    
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        logger.error(f"File not found for preview: {file_path}")
+        return jsonify({"error": f"File not found: {filename}"}), 404
+    
+    try:
+        # Check if we have cached extracted text data first
+        if filename in EXTRACTED_TEXT_CACHE:
+            logger.info(f"Using cached extracted text data for {filename}")
+            cached_data = EXTRACTED_TEXT_CACHE[filename]
+            
+            # Get file info
+            file_stats = os.stat(file_path)
+            file_size = file_stats.st_size
+            
+            preview_data = {
+                "filename": filename,
+                "file_size": file_size,
+                "file_type": cached_data.get("file_type", "UNKNOWN"),
+                "extracted_text": cached_data.get("extracted_text", ""),
+                "headers": cached_data.get("headers", []),
+                "data_rows": cached_data.get("sample_rows", []),
+                "total_rows": cached_data.get("total_rows", 0),
+                "parsing_info": cached_data.get("parsing_info", "")
+            }
+            
+            logger.info(f"Successfully returned cached preview data for {filename}")
+            return jsonify(sanitize_data_for_json(preview_data))
+        
+        # Fallback to original logic if no cached data (for backward compatibility)
+        logger.info(f"No cached data found for {filename}, falling back to re-processing")
+        
+        # Get file info
+        file_stats = os.stat(file_path)
+        file_size = file_stats.st_size
+        
+        # Determine file type
+        _, file_extension = os.path.splitext(filename)
+        file_extension = file_extension.lower()
+        
+        preview_data = {
+            "filename": filename,
+            "file_size": file_size,
+            "file_type": file_extension.replace('.', '').upper(),
+            "extracted_text": "",
+            "headers": [],
+            "data_rows": [],
+            "total_rows": 0,
+            "parsing_info": ""
+        }
+        
+        # Use the same extraction logic as the upload process
+        if file_extension in ['.csv']:
+            try:
+                # Extract headers and data using the same method as upload
+                headers_result = extract_headers(file_path, 'CSV', skip_rows=0)
+                if isinstance(headers_result, list):
+                    preview_data["headers"] = headers_result
+                    
+                    # Extract sample data - create mappings for all headers to show all data
+                    all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
+                    data_result = extract_data(file_path, 'CSV', all_headers_mapping, skip_rows=0)
+                    if isinstance(data_result, list):
+                        preview_data["data_rows"] = data_result  # All rows
+                        preview_data["total_rows"] = len(data_result)
+                        
+                        # Generate extracted text using helper function
+                        preview_data["extracted_text"] = generate_extracted_text(
+                            filename=filename,
+                            file_type="CSV",
+                            headers=preview_data['headers'],
+                            data_rows=preview_data['data_rows'],
+                            total_rows=preview_data['total_rows']
+                        )
+                        preview_data["parsing_info"] = f"Successfully parsed CSV with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing CSV file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing CSV: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse CSV: {str(e)}"
+                
+        elif file_extension in ['.xlsx', '.xls']:
+            try:
+                # Extract headers and data using the same method as upload
+                headers_result = extract_headers(file_path, 'XLSX', skip_rows=0)
+                if isinstance(headers_result, list):
+                    preview_data["headers"] = headers_result
+                    
+                    # Extract sample data - create mappings for all headers to show all data
+                    all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
+                    data_result = extract_data(file_path, 'XLSX', all_headers_mapping, skip_rows=0)
+                    if isinstance(data_result, list):
+                        preview_data["data_rows"] = data_result  # All rows
+                        preview_data["total_rows"] = len(data_result)
+                        
+                        # Generate extracted text using helper function
+                        preview_data["extracted_text"] = generate_extracted_text(
+                            filename=filename,
+                            file_type="EXCEL",
+                            headers=preview_data['headers'],
+                            data_rows=preview_data['data_rows'],
+                            total_rows=preview_data['total_rows']
+                        )
+                        preview_data["parsing_info"] = f"Successfully parsed Excel with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing Excel file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing Excel: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse Excel: {str(e)}"
+                
+        elif file_extension == '.pdf':
+            try:
+                # Check if we have cached PDF data first
+                if filename in TEMP_PDF_DATA_FOR_EXTRACTION:
+                    pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION[filename]
+                    preview_data["headers"] = pdf_data.get('headers', [])
+                    preview_data["data_rows"] = pdf_data.get('data_rows', [])[:10]
+                    preview_data["total_rows"] = len(pdf_data.get('data_rows', []))
+                else:
+                    # Extract fresh data using the same method as upload
+                    pdf_result = extract_headers_from_pdf_tables(file_path)
+                    if isinstance(pdf_result, dict) and "error" not in pdf_result:
+                        preview_data["headers"] = pdf_result.get('headers', [])
+                        preview_data["data_rows"] = pdf_result.get('data_rows', [])[:10]
+                        preview_data["total_rows"] = len(pdf_result.get('data_rows', []))
+                
+                if preview_data["headers"]:
+                    # Generate extracted text using helper function
+                    preview_data["extracted_text"] = generate_extracted_text(
+                        filename=filename,
+                        file_type="PDF",
+                        headers=preview_data['headers'],
+                        data_rows=preview_data['data_rows'],
+                        total_rows=preview_data['total_rows']
+                    )
+                    preview_data["parsing_info"] = f"Successfully parsed PDF with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                else:
+                    preview_data["extracted_text"] = "No structured data could be extracted from this PDF file."
+                    preview_data["parsing_info"] = "PDF parsing completed but no tabular data found"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing PDF file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing PDF: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse PDF: {str(e)}"
+        
+        else:
+            preview_data["extracted_text"] = f"File type {file_extension} is not supported for content extraction."
+            preview_data["parsing_info"] = f"Unsupported file type: {file_extension}"
+        
+        logger.info(f"Successfully generated parsed content preview for {filename}")
+        return jsonify(sanitize_data_for_json(preview_data))
+        
+    except Exception as e:
+        logger.error(f"Error generating parsed content preview for {filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error generating preview: {str(e)}"}), 500
 
 @app.route('/reprocess_file', methods=['POST'])
 def reprocess_file_route():
