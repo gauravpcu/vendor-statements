@@ -768,6 +768,170 @@ def get_template_details_route(template_filename):
         logger.error(f"Unexpected error getting template details for '{template_filename}': {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while retrieving template details."}), 500
 
+@app.route('/apply_template', methods=['POST'])
+def apply_template_route():
+    """Apply a template to a specific uploaded file."""
+    logger.info("Received request for /apply_template")
+    
+    data = request.get_json()
+    if not data:
+        logger.warning("apply_template_route: No data provided.")
+        return jsonify({"error": "No data provided"}), 400
+    
+    template_filename = data.get('template_filename')
+    file_identifier = data.get('file_identifier')
+    file_type = data.get('file_type')
+    
+    if not template_filename:
+        logger.warning("apply_template_route: Missing template_filename.")
+        return jsonify({"error": "Missing required field: template_filename"}), 400
+    
+    if not file_identifier:
+        logger.warning("apply_template_route: Missing file_identifier.")
+        return jsonify({"error": "Missing required field: file_identifier"}), 400
+    
+    if not file_type:
+        logger.warning("apply_template_route: Missing file_type.")
+        return jsonify({"error": "Missing required field: file_type"}), 400
+    
+    # Load template
+    template_path = os.path.join(TEMPLATES_DIR, template_filename)
+    if not os.path.exists(template_path):
+        logger.warning(f"apply_template_route: Template file not found: {template_path}")
+        return jsonify({"error": f"Template file not found: {template_filename}"}), 404
+    
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_data = json.load(f)
+        
+        # Validate template structure
+        if "field_mappings" not in template_data:
+            logger.error(f"apply_template_route: Invalid template structure in {template_filename}")
+            return jsonify({"error": "Invalid template: missing field_mappings"}), 400
+        
+        skip_rows = template_data.get("skip_rows", 0)
+        
+        # Check if file exists
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
+        if not os.path.exists(file_path):
+            logger.error(f"apply_template_route: File not found: {file_path}")
+            return jsonify({"error": f"File not found: {file_identifier}"}), 404
+        
+        # Re-extract headers with the template's skip_rows
+        logger.info(f"apply_template_route: Re-extracting headers for {file_identifier} with skip_rows={skip_rows}")
+        
+        if file_type == "PDF":
+            # For PDF files, use the cached data or re-extract
+            pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION.get(file_identifier)
+            if pdf_data:
+                headers = pdf_data.get('headers', [])
+            else:
+                # Re-extract from PDF
+                headers_result = extract_headers_from_pdf_tables(file_path)
+                if isinstance(headers_result, dict) and "error" not in headers_result:
+                    headers = headers_result.get("headers", [])
+                    # Cache the result
+                    TEMP_PDF_DATA_FOR_EXTRACTION[file_identifier] = headers_result
+                else:
+                    logger.error(f"apply_template_route: Error extracting headers from PDF {file_identifier}")
+                    return jsonify({"error": "Error extracting headers from PDF"}), 400
+        else:
+            # For CSV/XLS/XLSX files
+            headers_result = extract_headers(file_path, file_type, skip_rows=skip_rows)
+            if isinstance(headers_result, dict) and "error" in headers_result:
+                logger.error(f"apply_template_route: Error extracting headers: {headers_result['error']}")
+                return jsonify({"error": f"Error extracting headers: {headers_result['error']}"}), 400
+            headers = headers_result if isinstance(headers_result, list) else []
+        
+        if not headers:
+            logger.warning(f"apply_template_route: No headers found in {file_identifier} with skip_rows={skip_rows}")
+            return jsonify({"error": f"No headers found with skip_rows={skip_rows}"}), 400
+        
+        # Apply template mappings
+        template_mappings = template_data.get("field_mappings", [])
+        applied_mappings = []
+        
+        for header in headers:
+            # Look for this header in the template mappings
+            template_mapping = None
+            for mapping in template_mappings:
+                if mapping.get("original_header") == header:
+                    template_mapping = mapping
+                    break
+            
+            if template_mapping:
+                applied_mappings.append({
+                    "original_header": header,
+                    "mapped_field": template_mapping.get("mapped_field", ""),
+                    "confidence": 1.0  # Template mappings have high confidence
+                })
+            else:
+                # Use auto-mapping for headers not in template
+                auto_mapping = header_mapper.generate_mappings([header], FIELD_DEFINITIONS)
+                if auto_mapping:
+                    applied_mappings.append(auto_mapping[0])
+                else:
+                    applied_mappings.append({
+                        "original_header": header,
+                        "mapped_field": "",
+                        "confidence": 0.0
+                    })
+        
+        response_data = {
+            "success": True,
+            "message": f"Template '{template_data.get('template_name', template_filename)}' applied successfully",
+            "template_name": template_data.get("template_name", template_filename),
+            "template_filename": template_filename,
+            "skip_rows": skip_rows,
+            "headers": headers,
+            "field_mappings": applied_mappings,
+            "file_identifier": file_identifier,
+            "file_type": file_type
+        }
+        
+        logger.info(f"apply_template_route: Successfully applied template {template_filename} to {file_identifier}")
+        return jsonify(response_data)
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"apply_template_route: JSON decode error for {template_filename}: {e}")
+        return jsonify({"error": f"Invalid JSON in template file: {template_filename}"}), 400
+    except Exception as e:
+        logger.error(f"apply_template_route: Error applying template {template_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error applying template: {str(e)}"}), 500
+
+@app.route('/delete_template/<path:template_filename>', methods=['DELETE'])
+def delete_template_route(template_filename):
+    """Delete a specific template file."""
+    logger.info(f"Received request to delete template: {template_filename}")
+    
+    if not template_filename:
+        logger.warning("delete_template_route: No template filename provided.")
+        return jsonify({"error": "Template filename is required."}), 400
+    
+    template_path = os.path.join(TEMPLATES_DIR, template_filename)
+    
+    if not os.path.exists(template_path):
+        logger.warning(f"delete_template_route: Template file not found: {template_path}")
+        return jsonify({"error": f"Template file not found: {template_filename}"}), 404
+    
+    try:
+        os.remove(template_path)
+        logger.info(f"delete_template_route: Successfully deleted template: {template_filename}")
+        return jsonify({"message": f"Template '{template_filename}' deleted successfully."})
+    
+    except PermissionError as e:
+        logger.error(f"delete_template_route: Permission denied deleting {template_filename}: {e}")
+        return jsonify({"error": f"Permission denied: Cannot delete template {template_filename}"}), 403
+    except Exception as e:
+        logger.error(f"delete_template_route: Error deleting template {template_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error deleting template: {str(e)}"}), 500
+
+@app.route('/field_definitions', methods=['GET'])
+def field_definitions_route():
+    """Get field definitions for template creation."""
+    logger.info("Received request for /field_definitions")
+    return jsonify(FIELD_DEFINITIONS)
+
 @app.route('/reprocess_file', methods=['POST'])
 def reprocess_file_route():
     """Process a file with a new skip rows value and return updated headers and mappings"""
@@ -992,3 +1156,6 @@ def debug_info():
     return jsonify(debug_info)
 
 # --- Debug/test routes ---
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=8080)

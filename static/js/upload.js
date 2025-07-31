@@ -935,56 +935,101 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function applyTemplate(fileIdentifier, templateFilename, fileEntryElement) {
         console.log(`[applyTemplate] Applying template '${templateFilename}' to file '${fileIdentifier}'`);
-        fetch(`/get_template_details/${encodeURIComponent(templateFilename)}`)
-            .then(response => {
-                console.log("[applyTemplate] Response from get_template_details:", response);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch template details: ${response.statusText}`);
-                }
-                return response.json();
+        
+        // Get file type from the file entry element
+        const fileTypeElement = fileEntryElement.querySelector('.file-type');
+        const fileType = fileTypeElement ? fileTypeElement.textContent.trim() : 'unknown';
+        
+        if (fileType === 'unknown') {
+            console.error(`[applyTemplate] Could not determine file type for ${fileIdentifier}`);
+            displayMessage(`Error: Could not determine file type for ${fileIdentifier}`, true);
+            return;
+        }
+        
+        // Show loading state
+        const templateSelect = fileEntryElement.querySelector('.template-select');
+        if (templateSelect) {
+            templateSelect.disabled = true;
+        }
+        displayMessage(`Applying template "${templateFilename}" to ${fileIdentifier}...`);
+        
+        // Use the new apply_template route
+        fetch('/apply_template', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                template_filename: templateFilename,
+                file_identifier: fileIdentifier,
+                file_type: fileType
             })
-            .then(templateDetails => {
-                console.log("[applyTemplate] Template details received:", templateDetails);
-                if (templateDetails.error) {
-                    console.error("Error fetching template details:", templateDetails.error);
-                    displayMessage(`Error applying template: ${templateDetails.error}`, true);
-                    return;
-                }
-
-                console.log("[applyTemplate] Template details received:", templateDetails);
-
-                // Apply skip_rows
-                const fileIdentifierSafe = fileIdentifier.replace(/[^a-zA-Z0-9]/g, '_');
-                const skipRowsInput = fileEntryElement.querySelector(`#skipRows-${fileIdentifierSafe}`);
-                if (skipRowsInput && templateDetails.skip_rows !== undefined) {
-                    skipRowsInput.value = templateDetails.skip_rows;
-                    console.log(`[applyTemplate] Set skip_rows to: ${templateDetails.skip_rows}`);
-                } else if (templateDetails.skip_rows !== undefined) {
-                    console.warn(`[applyTemplate] skipRowsInput not found for ${fileIdentifierSafe}, but template has skip_rows: ${templateDetails.skip_rows}`);
-                }
-
-
-                // Apply field mappings
-                const mappingSelects = fileEntryElement.querySelectorAll('.mapping-table .mapping-select');
-                mappingSelects.forEach(select => {
-                    const originalHeader = select.dataset.originalHeader;
-                    const mapping = templateDetails.field_mappings.find(m => m.original_header === originalHeader);
-                    if (mapping) {
-                        select.value = mapping.mapped_field;
-                        // Trigger change event for consistency if other listeners depend on it
-                        select.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else {
-                        select.value = ''; // Or '__IGNORE__' or some default
-                         select.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
+        })
+        .then(response => {
+            console.log("[applyTemplate] Response from apply_template:", response);
+            if (!response.ok) {
+                return response.json().then(errorData => {
+                    throw new Error(errorData.error || `Failed to apply template: ${response.statusText}`);
                 });
-                displayMessage(`Template "${templateDetails.template_name || templateFilename}" applied to ${fileIdentifier}.`);
-                console.log(`[applyTemplate] Finished applying template '${templateFilename}' to '${fileIdentifier}'`);
-            })
-            .catch(error => {
-                console.error('Error applying template:', error);
-                displayMessage(`Error applying template ${templateFilename}: ${error.message}`, true);
-            });
+            }
+            return response.json();
+        })
+        .then(result => {
+            console.log("[applyTemplate] Template application result:", result);
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Template application failed');
+            }
+            
+            // Update the UI with the new data
+            const fileIdentifierSafe = fileIdentifier.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            // Update skip_rows input
+            const skipRowsInput = fileEntryElement.querySelector(`#skipRows-${fileIdentifierSafe}`);
+            if (skipRowsInput && result.skip_rows !== undefined) {
+                skipRowsInput.value = result.skip_rows;
+                console.log(`[applyTemplate] Set skip_rows to: ${result.skip_rows}`);
+            }
+            
+            // Update headers and mappings table
+            const mappingTableContainer = fileEntryElement.querySelector('.mapping-table-container');
+            if (mappingTableContainer && result.headers && result.field_mappings) {
+                // Clear existing table and show loading message
+                mappingTableContainer.innerHTML = '<div style="padding: 20px; background-color: #f1f8ff; color: blue; text-align: center;">Updating mapping table with template...</div>';
+                
+                // Rebuild the mapping table with new headers and mappings
+                setTimeout(() => {
+                    try {
+                        console.log(`[applyTemplate] Rendering new mapping table with ${result.headers.length} headers`);
+                        renderMappingTable(mappingTableContainer, fileIdentifier, fileType, result.headers, result.field_mappings, FIELD_DEFINITIONS, 0);
+                        console.log(`[applyTemplate] Updated mapping table successfully`);
+                    } catch (renderErr) {
+                        console.error(`[applyTemplate] Error rendering mapping table:`, renderErr);
+                        displayMessage(`Error updating mapping table: ${renderErr.message}`, true);
+                    }
+                }, 100);
+            }
+            
+            // Update file status message
+            const statusElement = fileEntryElement.querySelector('.file-status');
+            if (statusElement) {
+                statusElement.textContent = result.message;
+                statusElement.className = 'file-status success';
+            }
+            
+            displayMessage(`Template "${result.template_name}" applied successfully to ${fileIdentifier}.`);
+            console.log(`[applyTemplate] Successfully applied template '${templateFilename}' to '${fileIdentifier}'`);
+        })
+        .catch(error => {
+            console.error('Error applying template:', error);
+            displayMessage(`Error applying template ${templateFilename}: ${error.message}`, true);
+        })
+        .finally(() => {
+            // Re-enable template select
+            if (templateSelect) {
+                templateSelect.disabled = false;
+            }
+        });
     }
 
     // After populating template dropdown and adding event listeners, add the skip rows apply button event listener
