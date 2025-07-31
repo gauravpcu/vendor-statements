@@ -2,6 +2,12 @@ import sys
 import os
 import logging
 
+# Configure for Lambda environment if needed
+if os.environ.get('LAMBDA_ENVIRONMENT'):
+    from lambda_config import configure_lambda_environment, optimize_for_lambda
+    configure_lambda_environment()
+    optimize_for_lambda()
+
 # Set up root logger for startup diagnostics
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
@@ -12,6 +18,7 @@ root_logger.addHandler(handler)
 # Log import-time debugging information
 root_logger.info("App starting up - Python version: %s", sys.version)
 root_logger.info("Working directory: %s", os.getcwd())
+root_logger.info("Lambda environment: %s", os.environ.get('LAMBDA_ENVIRONMENT', 'false'))
 
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os

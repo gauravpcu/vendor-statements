@@ -1,21 +1,31 @@
-Flask
-Werkzeug
-python-dotenv
-openai
-requests
-pandas
-openpyxl
-xlrd
-python-magic
-pdfplumber
-pytesseract
-pdf2image
-gunicorn
-fastapi
-uvicorn
-python-multipart
-# AWS Lambda dependencies
-mangum
-boto3
-aws-lambda-powertools
-# Exclude docling
+# Core Flask dependencies
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# Azure OpenAI and AI services
+openai==1.3.0
+requests==2.31.0
+
+# Data processing
+pandas==2.1.3
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# File processing
+python-magic-bin==0.4.14  # Use binary version for Lambda
+pdfplumber==0.9.0
+
+# AWS Lambda specific
+boto3==1.34.0
+aws-lambda-powertools==2.25.0
+
+# Exclude heavy dependencies not needed in Lambda
+# pytesseract - OCR not needed for current functionality
+# pdf2image - Image processing not needed
+# gunicorn - Not needed in Lambda
+# fastapi/uvicorn - Using Flask
+# mangum - Not needed for Flask
+# docling - Too heavy for Lambda
