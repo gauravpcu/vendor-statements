@@ -1,9 +1,11 @@
 # 📊 Vendor Statements Processor
 
-A modern, intelligent web application for processing vendor statements with automatic template matching and field mapping.
+A modern, intelligent web application for processing vendor statements with automatic template matching and AI-powered field mapping. Deployed on AWS EC2 with Docker for production reliability.
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8+-green.svg)
+![Python](https://img.shields.io/badge/python-3.11+-green.svg)
+![AWS](https://img.shields.io/badge/AWS-EC2-orange.svg)
+![Docker](https://img.shields.io/badge/Docker-enabled-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 ## ✨ Features
@@ -20,41 +22,94 @@ A modern, intelligent web application for processing vendor statements with auto
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- Virtual environment (recommended)
+- AWS CLI configured with appropriate permissions
+- Docker installed locally (for building images)
+- SSH key pair for EC2 access
+- Azure OpenAI service configured
 
-### Installation
+### EC2 Deployment (Recommended)
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/vendor-statements.git
+   git clone https://github.com/gauravpcu/vendor-statements.git
    cd vendor-statements
    ```
 
-2. **Set up virtual environment**
+2. **Configure deployment**
+   ```bash
+   ./setup-ec2-deployment.sh
+   ```
+
+3. **Deploy to EC2**
+   ```bash
+   ./deploy-ec2.sh
+   ```
+
+4. **Manage your deployment**
+   ```bash
+   ./ec2-management.sh status
+   ```
+
+### Local Development
+
+1. **Set up virtual environment**
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
-3. **Install dependencies**
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment**
+3. **Configure environment**
    ```bash
-   cp .env.example .env
+   cp .env.template .env
    # Edit .env with your configuration
    ```
 
-5. **Run the application**
+4. **Run locally**
    ```bash
    python app.py
    ```
 
-6. **Open your browser**
-   Navigate to `http://localhost:8080`
+5. **Open your browser**
+   Navigate to `http://localhost:8000`
+
+## 🏗️ Deployment
+
+### Production EC2 Deployment
+
+This application is designed for production deployment on AWS EC2 with Docker containers.
+
+**Quick Deployment:**
+```bash
+./setup-ec2-deployment.sh  # Interactive setup
+./deploy-ec2.sh           # Deploy to EC2
+```
+
+**Management Commands:**
+```bash
+./ec2-management.sh status    # Check deployment status
+./ec2-management.sh logs      # View application logs
+./ec2-management.sh update    # Update to latest version
+./ec2-management.sh ssh       # SSH to EC2 instance
+```
+
+**For detailed deployment instructions, see:**
+- [EC2 Deployment Guide](README-EC2-DEPLOYMENT.md) - Comprehensive deployment documentation
+- [Console Setup Guide](ec2-console-setup-guide.md) - Manual AWS console setup
+
+### Architecture
+
+```
+Internet → Security Group → EC2 Instance → Docker Container (Flask App)
+                                ↓
+                           EBS Volume (persistent storage)
+                                ↓
+                           S3 Bucket (file storage)
+```
 
 ## 📖 Usage
 
