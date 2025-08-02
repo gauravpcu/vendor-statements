@@ -1,32 +1,42 @@
-# Use official Python image
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set work directory
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies (if needed, e.g., for pandas, openpyxl, etc.)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
+# Install system dependencies for file processing
+RUN apt-get update && apt-get install -y \
     libmagic1 \
+    libmagic-dev \
+    gcc \
+    g++ \
+    curl \
+    tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Copy project files
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY . .
 
-# Expose the port the API runs on
+# Create necessary directories
+RUN mkdir -p /app/uploads /app/templates_storage /app/learned_preferences_storage
+
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+ENV PYTHONPATH=/app
+
+# Expose port
 EXPOSE 8000
 
-# Command to run the API using Uvicorn
-CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# For development mode with auto-reload:
-# CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run the application
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:app"]

@@ -9,13 +9,13 @@ import pdfplumber
 
 _log = logging.getLogger(__name__)
 
-def is_running_on_lambda():
-    """Check if the code is running on AWS Lambda"""
+def is_running_on_apprunner():
+    """Check if the code is running on AWS App Runner"""
     return os.environ.get('AWS_EXECUTION_ENV') is not None
 
-def extract_tables_from_file_lambda(input_doc_path_str: str, output_csv_path_str: str | None = None):
+def extract_tables_from_file_pdfplumber(input_doc_path_str: str, output_csv_path_str: str | None = None):
     """
-    Extract tables from a PDF file using pdfplumber (Lambda-compatible version without docling)
+    Extract tables from a PDF file using pdfplumber (App Runner compatible)
     """
     logging.basicConfig(level=logging.INFO)
 
@@ -190,18 +190,15 @@ def extract_tables_from_file(input_doc_path_str: str, output_csv_path_str: str |
     In AWS Lambda: Use pdfplumber (lighter, no torch dependency)
     In local dev: Use docling if available (better accuracy) or pdfplumber as fallback
     """
-    if is_running_on_lambda():
-        _log.info("Running in Lambda environment, using pdfplumber for PDF table extraction")
-        return extract_tables_from_file_lambda(input_doc_path_str, output_csv_path_str)
-    else:
-        try:
-            # Try using docling first (better table extraction)
-            _log.info("Using docling for PDF table extraction")
-            return extract_tables_from_file_docling(input_doc_path_str, output_csv_path_str)
-        except ImportError as e:
-            # Fallback to pdfplumber if docling is not available
-            _log.info(f"Docling not available ({e}), falling back to pdfplumber for table extraction")
-            return extract_tables_from_file_lambda(input_doc_path_str, output_csv_path_str)
+    # Always try docling first for best results, fallback to pdfplumber
+    try:
+        # Try using docling first (better table extraction)
+        _log.info("Using docling for PDF table extraction")
+        return extract_tables_from_file_docling(input_doc_path_str, output_csv_path_str)
+    except ImportError as e:
+        # Fallback to pdfplumber if docling is not available
+        _log.info(f"Docling not available ({e}), falling back to pdfplumber for table extraction")
+        return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
 
 
 if __name__ == "__main__":

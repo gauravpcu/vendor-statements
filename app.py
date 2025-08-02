@@ -2,11 +2,7 @@ import sys
 import os
 import logging
 
-# Configure for Lambda environment if needed
-if os.environ.get('LAMBDA_ENVIRONMENT'):
-    from lambda_config import configure_lambda_environment, optimize_for_lambda
-    configure_lambda_environment()
-    optimize_for_lambda()
+# App Runner optimized Flask application
 
 # Set up root logger for startup diagnostics
 root_logger = logging.getLogger()
@@ -18,7 +14,7 @@ root_logger.addHandler(handler)
 # Log import-time debugging information
 root_logger.info("App starting up - Python version: %s", sys.version)
 root_logger.info("Working directory: %s", os.getcwd())
-root_logger.info("Lambda environment: %s", os.environ.get('LAMBDA_ENVIRONMENT', 'false'))
+root_logger.info("App Runner environment: %s", os.environ.get('AWS_EXECUTION_ENV', 'local'))
 
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os
@@ -106,16 +102,25 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(LEARNED_PREFERENCES_DIR, exist_ok=True)
 
-try:
-    logger.info("Attempting to test Azure OpenAI connection...")
-    test_result = test_azure_openai_connection()
-    logger.info(f"Azure OpenAI Connection Test Result: {test_result}")
-    if not test_result.get("success"):
-        logger.warning(f"Azure OpenAI connection test failed: {test_result.get('message')} - Details: {test_result.get('details')}")
-    if not azure_openai_configured:
-        logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
-except Exception as e:
-    logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+# Test Azure OpenAI connection in a non-blocking way
+def test_azure_openai_async():
+    """Test Azure OpenAI connection without blocking startup"""
+    try:
+        logger.info("Attempting to test Azure OpenAI connection...")
+        test_result = test_azure_openai_connection()
+        logger.info(f"Azure OpenAI Connection Test Result: {test_result}")
+        if not test_result.get("success"):
+            logger.warning(f"Azure OpenAI connection test failed: {test_result.get('message')} - Details: {test_result.get('details')}")
+        if not azure_openai_configured:
+            logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+
+# Only test Azure OpenAI if not in App Runner environment to avoid blocking startup
+if os.environ.get('AWS_EXECUTION_ENV') != 'AWS_AppRunner_1':
+    test_azure_openai_async()
+else:
+    logger.info("Running in App Runner - skipping Azure OpenAI connection test during startup")
 
 # Log warning for external Invoice Validation API if URL is not set
 if not app.config['INVOICE_VALIDATION_API_URL']:
@@ -145,7 +150,16 @@ EXTENSION_TO_TYPE_FALLBACK = {
 
 @app.route('/')
 def index():
-    return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
+    try:
+        return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
+    except Exception as e:
+        # Fallback for App Runner if templates fail
+        return jsonify({
+            "status": "app_running",
+            "message": "Vendor Statements Processor is running",
+            "health_check": "/health",
+            "error": str(e) if e else None
+        })
 
 @app.route('/manage_templates')
 def manage_templates_page():
@@ -1496,5 +1510,34 @@ def debug_info():
 
 # --- Debug/test routes ---
 
+@app.route('/health/detailed')
+def health_detailed():
+    """Detailed health check with capabilities"""
+    try:
+        # Test basic functionality
+        import pandas as pd
+        import pdfplumber
+        import magic
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "environment": "app_runner",
+            "capabilities": {
+                "pandas": pd.__version__,
+                "pdfplumber": "available",
+                "magic": "available",
+                "azure_openai": azure_openai_configured if 'azure_openai_configured' in globals() else False
+            },
+            "storage": storage_service.get_storage_info() if 'storage_service' in globals() else {"backend": "unknown"}
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    # For local development
+    app.run(debug=True, host='0.0.0.0', port=8088)
