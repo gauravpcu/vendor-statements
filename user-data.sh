@@ -36,7 +36,7 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 # Pull and run the application
 docker pull 533267165065.dkr.ecr.us-east-1.amazonaws.com/vendor-statements-processor:latest
 
-# Run the container
+# Run the container with optimized settings for higher memory
 docker run -d \
     --name vendor-statements-app \
     --restart unless-stopped \
@@ -44,6 +44,9 @@ docker run -d \
     -v /opt/app-data/uploads:/app/uploads \
     -v /opt/app-data/templates:/app/templates_storage \
     -v /opt/app-data/preferences:/app/learned_preferences_storage \
+    --memory="6g" \
+    --memory-swap="8g" \
+    --cpus="2.0" \
     --env-file /opt/app/.env \
     533267165065.dkr.ecr.us-east-1.amazonaws.com/vendor-statements-processor:latest
 
@@ -77,7 +80,7 @@ docker pull 533267165065.dkr.ecr.us-east-1.amazonaws.com/vendor-statements-proce
 docker stop vendor-statements-app
 docker rm vendor-statements-app
 
-# Start new container
+# Start new container with optimized settings
 docker run -d \
     --name vendor-statements-app \
     --restart unless-stopped \
@@ -85,6 +88,9 @@ docker run -d \
     -v /opt/app-data/uploads:/app/uploads \
     -v /opt/app-data/templates:/app/templates_storage \
     -v /opt/app-data/preferences:/app/learned_preferences_storage \
+    --memory="6g" \
+    --memory-swap="8g" \
+    --cpus="2.0" \
     --env-file /opt/app/.env \
     533267165065.dkr.ecr.us-east-1.amazonaws.com/vendor-statements-processor:latest
 

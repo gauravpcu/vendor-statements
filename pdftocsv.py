@@ -15,9 +15,17 @@ def is_running_on_apprunner():
 
 def extract_tables_from_file_pdfplumber(input_doc_path_str: str, output_csv_path_str: str | None = None):
     """
-    Extract tables from a PDF file using pdfplumber (App Runner compatible)
+    Extract tables from a PDF file using pdfplumber (Memory optimized)
     """
     logging.basicConfig(level=logging.INFO)
+    
+    # Memory optimization: Set limits
+    import resource
+    try:
+        # Limit memory usage to 1GB per process
+        resource.setrlimit(resource.RLIMIT_AS, (1024*1024*1024, 1024*1024*1024))
+    except:
+        pass  # Ignore if not supported
 
     input_doc_path = Path(input_doc_path_str)
 
@@ -104,8 +112,23 @@ def extract_tables_from_file_pdfplumber(input_doc_path_str: str, output_csv_path
 
 def extract_tables_from_file_docling(input_doc_path_str: str, output_csv_path_str: str | None = None):
     """
-    Extract tables from a PDF file using docling (more accurate but not Lambda-compatible)
+    Extract tables from a PDF file using docling (memory optimized)
     """
+    # Memory optimization: Import and configure before heavy operations
+    import gc
+    import torch
+    gc.collect()
+    
+    # Set PyTorch to use less memory
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    # Limit number of threads to reduce memory usage
+    torch.set_num_threads(1)
+    
+    # Set memory allocation strategy
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+    
     from docling.document_converter import DocumentConverter
     
     logging.basicConfig(level=logging.INFO)
@@ -185,19 +208,45 @@ def extract_tables_from_file_docling(input_doc_path_str: str, output_csv_path_st
 
 def extract_tables_from_file(input_doc_path_str: str, output_csv_path_str: str | None = None):
     """
-    Extract tables from a file. Uses the appropriate method based on environment.
+    Extract tables from a file with memory-aware fallback strategy.
     
-    In AWS Lambda: Use pdfplumber (lighter, no torch dependency)
-    In local dev: Use docling if available (better accuracy) or pdfplumber as fallback
+    Strategy:
+    1. Try docling first (better accuracy) with memory monitoring
+    2. If docling fails due to memory issues, fallback to pdfplumber
+    3. If both fail, return empty result
     """
-    # Always try docling first for best results, fallback to pdfplumber
+    import psutil
+    import gc
+    
+    # Check available memory before processing
+    available_memory_gb = psutil.virtual_memory().available / (1024**3)
+    _log.info(f"Available memory: {available_memory_gb:.2f} GB")
+    
+    # If we have less than 1GB available, skip docling and use pdfplumber
+    if available_memory_gb < 1.0:
+        _log.warning(f"Low memory ({available_memory_gb:.2f} GB available). Using pdfplumber instead of docling.")
+        return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    
+    # Try docling first for best results
     try:
-        # Try using docling first (better table extraction)
-        _log.info("Using docling for PDF table extraction")
-        return extract_tables_from_file_docling(input_doc_path_str, output_csv_path_str)
+        _log.info("Attempting docling for PDF table extraction")
+        gc.collect()  # Clean up before heavy operation
+        result = extract_tables_from_file_docling(input_doc_path_str, output_csv_path_str)
+        _log.info("✅ Docling extraction successful")
+        return result
     except ImportError as e:
         # Fallback to pdfplumber if docling is not available
         _log.info(f"Docling not available ({e}), falling back to pdfplumber for table extraction")
+        return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    except (MemoryError, RuntimeError, SystemExit) as e:
+        # Memory-related errors - fallback to pdfplumber
+        _log.warning(f"Docling failed due to memory/system error ({e}), falling back to pdfplumber")
+        gc.collect()  # Clean up memory
+        return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    except Exception as e:
+        # Any other error - fallback to pdfplumber
+        _log.error(f"Docling failed with error ({e}), falling back to pdfplumber")
+        gc.collect()  # Clean up memory
         return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
 
 

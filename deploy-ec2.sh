@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 REGION="us-east-1"
-INSTANCE_TYPE="t3.medium"
+INSTANCE_TYPE="t3.large"
 KEY_NAME="vendor-statements-key"
 SECURITY_GROUP_NAME="vendor-statements-sg"
 INSTANCE_NAME="vendor-statements-processor"
