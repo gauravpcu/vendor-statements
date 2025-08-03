@@ -1728,7 +1728,7 @@ document.addEventListener('DOMContentLoaded', function () {
         console.log(`[applyTemplate] Applying template '${templateFilename}' to file '${fileIdentifier}'`);
 
         // Get file type from the file entry element
-        const fileTypeElement = fileEntryElement.querySelector('.file-type');
+        const fileTypeElement = fileEntryElement.querySelector('.file-type-badge');
         const fileType = fileTypeElement ? fileTypeElement.textContent.trim() : 'unknown';
 
         if (fileType === 'unknown') {
