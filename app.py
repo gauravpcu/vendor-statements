@@ -2,6 +2,8 @@ import sys
 import os
 import logging
 
+# App Runner optimized Flask application
+
 # Set up root logger for startup diagnostics
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
@@ -12,6 +14,7 @@ root_logger.addHandler(handler)
 # Log import-time debugging information
 root_logger.info("App starting up - Python version: %s", sys.version)
 root_logger.info("Working directory: %s", os.getcwd())
+root_logger.info("App Runner environment: %s", os.environ.get('AWS_EXECUTION_ENV', 'local'))
 
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, current_app
 import os
@@ -31,6 +34,10 @@ from data_validator import validate_uniqueness, validate_invoice_via_api # Impor
 # from werkzeug.utils import secure_filename
 import csv
 from pdftocsv import extract_tables_from_file # Added for PDF to CSV conversion
+
+# Import storage services
+from storage_service import storage_service
+from config.s3_config import S3Config
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -95,22 +102,34 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(LEARNED_PREFERENCES_DIR, exist_ok=True)
 
-try:
-    logger.info("Attempting to test Azure OpenAI connection...")
-    test_result = test_azure_openai_connection()
-    logger.info(f"Azure OpenAI Connection Test Result: {test_result}")
-    if not test_result.get("success"):
-        logger.warning(f"Azure OpenAI connection test failed: {test_result.get('message')} - Details: {test_result.get('details')}")
-    if not azure_openai_configured:
-        logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
-except Exception as e:
-    logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+# Test Azure OpenAI connection in a non-blocking way
+def test_azure_openai_async():
+    """Test Azure OpenAI connection without blocking startup"""
+    try:
+        logger.info("Attempting to test Azure OpenAI connection...")
+        test_result = test_azure_openai_connection()
+        logger.info(f"Azure OpenAI Connection Test Result: {test_result}")
+        if not test_result.get("success"):
+            logger.warning(f"Azure OpenAI connection test failed: {test_result.get('message')} - Details: {test_result.get('details')}")
+        if not azure_openai_configured:
+            logger.warning("Azure OpenAI client is not configured due to missing environment variables or initialization failure.")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during the Azure OpenAI connection test call: {e}", exc_info=True)
+
+# Only test Azure OpenAI if not in App Runner environment to avoid blocking startup
+if os.environ.get('AWS_EXECUTION_ENV') != 'AWS_AppRunner_1':
+    test_azure_openai_async()
+else:
+    logger.info("Running in App Runner - skipping Azure OpenAI connection test during startup")
 
 # Log warning for external Invoice Validation API if URL is not set
 if not app.config['INVOICE_VALIDATION_API_URL']:
     logger.warning("INVOICE_VALIDATION_API_URL is not set in environment variables. External invoice validation will be disabled.")
 
 TEMP_PDF_DATA_FOR_EXTRACTION = {}
+
+# Global dictionary to store extracted text data for all processed files
+EXTRACTED_TEXT_CACHE = {}
 
 SUPPORTED_MIME_TYPES = {
     'application/pdf': 'PDF',
@@ -131,7 +150,16 @@ EXTENSION_TO_TYPE_FALLBACK = {
 
 @app.route('/')
 def index():
-    return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
+    try:
+        return render_template('index.html', field_definitions_json=json.dumps(FIELD_DEFINITIONS))
+    except Exception as e:
+        # Fallback for App Runner if templates fail
+        return jsonify({
+            "status": "app_running",
+            "message": "Vendor Statements Processor is running",
+            "health_check": "/health",
+            "error": str(e) if e else None
+        })
 
 @app.route('/manage_templates')
 def manage_templates_page():
@@ -174,6 +202,17 @@ def upload_files():
             try:
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file_storage.save(file_path)
+                
+                # Also save to S3 if enabled (async backup)
+                try:
+                    s3_key = storage_service.save_file(file_path)
+                    if s3_key:
+                        logger.info(f"File {filename} also saved to S3 storage: {s3_key}")
+                        results_entry["s3_key"] = s3_key
+                        results_entry["storage_backend"] = storage_service.get_storage_info()['backend']
+                except Exception as e_s3:
+                    logger.warning(f"Failed to save {filename} to S3 (continuing with local): {e_s3}")
+                    # Don't fail the upload if S3 save fails
 
                 try:
                     raw_mime_type = magic.from_file(file_path, mime=True)
@@ -340,7 +379,54 @@ def upload_files():
                             
                     results_entry["headers"] = actual_headers_from_file
 
-                    # 4. Determine Field Mappings (Template or Auto-generated), only if header extraction was successful
+                    # 4. Generate and cache extracted text data
+                    if results_entry["success"] and actual_headers_from_file:
+                        try:
+                            # Extract sample data for text generation
+                            sample_data_rows = []
+                            total_rows = 0
+                            
+                            if detected_type_name == "PDF":
+                                # Use cached PDF data
+                                if original_filename_for_vendor in TEMP_PDF_DATA_FOR_EXTRACTION:
+                                    pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION[original_filename_for_vendor]
+                                    sample_data_rows = pdf_data.get('data_rows', [])
+                                    total_rows = len(sample_data_rows)
+                            else:
+                                # Extract data for CSV/Excel files - create mappings for all headers to get all data
+                                all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in actual_headers_from_file]
+                                data_result = extract_data(effective_file_path_for_processing, detected_type_name, all_headers_mapping, skip_rows=current_skip_rows_for_extraction)
+                                if isinstance(data_result, list):
+                                    sample_data_rows = data_result
+                                    total_rows = len(data_result)
+                            
+                            # Generate extracted text
+                            extracted_text = generate_extracted_text(
+                                filename=results_entry["filename"],
+                                file_type=detected_type_name,
+                                headers=actual_headers_from_file,
+                                data_rows=sample_data_rows,
+                                total_rows=total_rows
+                            )
+                            
+                            # Cache the extracted text data (sanitized for JSON)
+                            cache_data = {
+                                "extracted_text": extracted_text,
+                                "headers": actual_headers_from_file,
+                                "sample_rows": sample_data_rows,  # All rows for full content view
+                                "total_rows": total_rows,
+                                "file_type": detected_type_name,
+                                "parsing_info": f"Successfully parsed {detected_type_name} with {len(actual_headers_from_file)} headers and {total_rows} rows"
+                            }
+                            EXTRACTED_TEXT_CACHE[results_entry["filename"]] = sanitize_data_for_json(cache_data)
+                            
+                            logger.info(f"Generated and cached extracted text for {results_entry['filename']}")
+                            
+                        except Exception as e_text:
+                            logger.error(f"Error generating extracted text for {results_entry['filename']}: {e_text}")
+                            # Don't fail the entire process if text generation fails
+                    
+                    # 5. Determine Field Mappings (Template or Auto-generated), only if header extraction was successful
                     if results_entry["success"]: # Check if header extraction above was successful
                         if actual_headers_from_file: # If headers were found
                             if template_applied_data:
@@ -348,12 +434,24 @@ def upload_files():
                                 # results_entry["skip_rows"] is already set from template
                                 results_entry["message"] = f"Template '{results_entry['applied_template_name']}' auto-applied with {results_entry['skip_rows']} skip rows."
                                 logger.info(f"Applied template mappings for '{original_filename_for_vendor}'.")
-                            else: # No template applied, generate mappings
+                            else: # No template applied, generate intelligent AI mappings
+                                logger.info(f"No template found for '{vendor_name_from_file}'. Using Azure OpenAI for intelligent field mapping.")
                                 mappings = header_mapper.generate_mappings(actual_headers_from_file, FIELD_DEFINITIONS)
                                 results_entry["field_mappings"] = mappings
                                 # results_entry["skip_rows"] remains default 0 if no template
-                                results_entry["message"] = "Headers extracted and auto-mapped." # Default message
-                                logger.info(f"Generated {len(mappings)} mappings for {original_filename_for_vendor} (Type: {detected_type_name}).")
+                                
+                                # Analyze mapping quality and provide informative message
+                                high_confidence_count = sum(1 for m in mappings if m.get('confidence_score', 0) >= 80)
+                                total_mappings = len([m for m in mappings if m.get('mapped_field') != 'N/A'])
+                                
+                                if high_confidence_count >= len(mappings) * 0.7:  # 70% or more high confidence
+                                    results_entry["message"] = f"🤖 AI auto-mapped {high_confidence_count}/{len(mappings)} headers with high confidence."
+                                elif total_mappings > 0:
+                                    results_entry["message"] = f"🤖 AI mapped {total_mappings}/{len(mappings)} headers. Review and adjust as needed."
+                                else:
+                                    results_entry["message"] = f"🤖 AI analyzed {len(mappings)} headers. Manual mapping may be needed."
+                                
+                                logger.info(f"🤖 AI generated {len(mappings)} mappings for {original_filename_for_vendor}: {high_confidence_count} high-confidence, {total_mappings} total mapped.")
                         else: # No headers found in file, but header extraction itself didn't error
                             current_msg = results_entry.get("message", "")
                             if "successfully" in current_msg.lower() or "auto-mapped" in current_msg.lower() : # Avoid double "no headers" if already part of a success message
@@ -406,6 +504,40 @@ def chatbot_suggest_mapping_route():
 
 
 # Helper function to convert NaT/NaN to None and Timestamps to ISO strings for JSON serialization
+def generate_extracted_text(filename, file_type, headers, data_rows, total_rows):
+    """Generate extracted text representation of file data"""
+    text_lines = []
+    text_lines.append(f"=== PARSED {file_type.upper()} CONTENT ===")
+    text_lines.append(f"File: {filename}")
+    text_lines.append(f"Headers Found: {len(headers)}")
+    text_lines.append(f"Total Rows: {total_rows}")
+    text_lines.append("")
+    
+    if headers:
+        text_lines.append("HEADERS:")
+        for i, header in enumerate(headers, 1):
+            text_lines.append(f"  {i}. {header}")
+        text_lines.append("")
+        
+        if data_rows:
+            text_lines.append("ALL DATA:")
+            for i, row in enumerate(data_rows, 1):
+                text_lines.append(f"Row {i}:")
+                if isinstance(row, dict):
+                    for header in headers:
+                        value = row.get(header, '')
+                        text_lines.append(f"  {header}: {value}")
+                else:
+                    # Handle case where row is a list
+                    for j, value in enumerate(row):
+                        header = headers[j] if j < len(headers) else f"Column_{j}"
+                        text_lines.append(f"  {header}: {value}")
+                text_lines.append("")
+    else:
+        text_lines.append("No headers found in file.")
+    
+    return "\n".join(text_lines)
+
 def sanitize_data_for_json(item):
     if isinstance(item, list):
         return [sanitize_data_for_json(x) for x in item]
@@ -541,6 +673,7 @@ def view_uploaded_file(filename):
 
 @app.route('/save_template', methods=['POST'])
 def save_template_route():
+    """Save a template using the storage service (S3 or local)"""
     logger.info("Received request for /save_template")
     data = request.get_json()
     if not data:
@@ -551,12 +684,12 @@ def save_template_route():
 
     original_template_name = data.get('template_name', '').strip()
     field_mappings = data.get('field_mappings')
-    # Get skip_rows as string first for robust parsing, default to '0'
-    skip_rows_str = str(data.get('skip_rows', '0')) # Ensure it's a string for consistent handling
+    skip_rows_str = str(data.get('skip_rows', '0'))
     overwrite = data.get('overwrite', False)
 
     logger.info(f"/save_template: Parsed parameters - Name: '{original_template_name}', Mappings Count: {len(field_mappings) if field_mappings else 0}, SkipRows Str: '{skip_rows_str}', Overwrite: {overwrite}")
 
+    # Validation
     if not original_template_name:
         logger.warning("/save_template: Template name is required but was empty.")
         return jsonify({"error": "Template name is required."}), 400
@@ -565,6 +698,7 @@ def save_template_route():
         logger.warning("/save_template: Field mappings are required and cannot be empty.")
         return jsonify({"error": "Field mappings are required and cannot be empty."}), 400
     
+    # Parse skip_rows
     try:
         skip_rows = int(skip_rows_str)
         if skip_rows < 0: 
@@ -576,80 +710,68 @@ def save_template_route():
     
     logger.info(f"/save_template: Final skip_rows value: {skip_rows}")
 
-
-    sanitized_name_part = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_template_name)
-    if not sanitized_name_part:
+    # Sanitize template name for storage
+    sanitized_name = "".join(c if c.isalnum() or c in ('_', '-') else '' for c in original_template_name)
+    if not sanitized_name:
         logger.warning(f"/save_template: Template name '{original_template_name}' sanitized to empty. Not saving.")
         return jsonify({"error": "Invalid template name after sanitization. Please provide a more descriptive name."}), 400
 
-    safe_target_filename = f"{sanitized_name_part}.json"
-    target_file_path = os.path.join(TEMPLATES_DIR, safe_target_filename)
-    logger.info(f"/save_template: Target filename: '{safe_target_filename}', Full path: '{target_file_path}'")
+    # Check for existing template with same name
+    if not overwrite:
+        existing_templates = storage_service.list_templates()
+        for template_name in existing_templates:
+            existing_template = storage_service.load_template(template_name)
+            if existing_template and existing_template.get('template_name') == original_template_name:
+                logger.warning(f"/save_template: Template with name '{original_template_name}' already exists.")
+                return jsonify({
+                    'status': 'conflict', 
+                    'error_type': 'NAME_ALREADY_EXISTS',
+                    'message': f"A template with the name '{original_template_name}' already exists. Do you want to overwrite it?",
+                    'existing_template_name': original_template_name
+                }), 409
 
-    # Check 1: Exact Original Name Match in a *Different* File
-    if os.path.exists(TEMPLATES_DIR):
-        for existing_s_filename in os.listdir(TEMPLATES_DIR):
-            if not existing_s_filename.endswith(".json") or existing_s_filename == safe_target_filename:
-                continue # Skip self or non-json files
-            try:
-                with open(os.path.join(TEMPLATES_DIR, existing_s_filename), 'r', encoding='utf-8') as f:
-                    existing_template_data = json.load(f)
-                if existing_template_data.get('template_name') == original_template_name:
-                    logger.warning(f"/save_template: Name conflict. Template name '{original_template_name}' already exists in '{existing_s_filename}'.")
-                    return jsonify({
-                        'status': 'error', 'error_type': 'NAME_ALREADY_EXISTS_IN_OTHER_FILE',
-                        'message': f"A template with the name '{original_template_name}' already exists (saved as '{existing_s_filename}'). Please choose a unique name.",
-                        'conflicting_filename': existing_s_filename
-                    }), 409 # HTTP 409 Conflict
-            except (IOError, json.JSONDecodeError) as e:
-                logger.error(f"/save_template: Error reading/parsing '{existing_s_filename}' during name conflict check: {e}")
-                # Optionally, decide if this error should halt the process or just be logged
-                # For now, it logs and continues, meaning a potential conflict might be missed if a file is unreadable
+        # Check if sanitized name exists as a template
+        if storage_service.template_exists(sanitized_name):
+            existing_template = storage_service.load_template(sanitized_name)
+            existing_name = existing_template.get('template_name', sanitized_name) if existing_template else sanitized_name
+            logger.warning(f"/save_template: Template file '{sanitized_name}' already exists with name '{existing_name}'.")
+            return jsonify({
+                'status': 'conflict',
+                'error_type': 'FILENAME_CLASH', 
+                'message': f"A template file '{sanitized_name}' already exists (contains template '{existing_name}'). Do you want to overwrite it?",
+                'filename': f"{sanitized_name}.json",
+                'existing_template_name': existing_name
+            }), 409
 
-    filename_exists = os.path.exists(target_file_path)
-    logger.info(f"/save_template: Filename '{safe_target_filename}' exists: {filename_exists}, Overwrite flag: {overwrite}")
+    # Create template data
+    template_data = {
+        "template_name": original_template_name,
+        "filename": f"{sanitized_name}.json",
+        "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "field_mappings": field_mappings,
+        "skip_rows": skip_rows,
+        "storage_backend": storage_service.get_storage_info()['backend']
+    }
 
-    if filename_exists and not overwrite:
-        existing_internal_name = "N/A"
-        try:
-            with open(target_file_path, 'r', encoding='utf-8') as f:
-                loaded_content = json.load(f)
-            existing_internal_name = loaded_content.get('template_name', 'N/A')
-            logger.info(f"/save_template: Filename clash. Existing template '{safe_target_filename}' has internal name '{existing_internal_name}'. Prompting for overwrite.")
-        except (IOError, json.JSONDecodeError):
-            logger.error(f"/save_template: Could not read existing template {target_file_path} to get its name during conflict check.")
-        
-        return jsonify({
-            'status': 'conflict', 'error_type': 'FILENAME_CLASH',
-            'message': f"A template file that would be named '{safe_target_filename}' already exists (it currently stores a template named '{existing_internal_name}'). Do you want to overwrite it?",
-            'filename': safe_target_filename, 'existing_template_name': existing_internal_name
-        }), 409
-
-    # Proceed to save/overwrite if (filename_exists and overwrite) or (not filename_exists)
-    if (filename_exists and overwrite) or (not filename_exists):
-        template_data = {
-            "template_name": original_template_name,
-            "filename": safe_target_filename, 
-            "creation_timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            "field_mappings": field_mappings,
-            "skip_rows": skip_rows 
-        }
-        try:
-            with open(target_file_path, 'w', encoding='utf-8') as f:
-                json.dump(template_data, f, indent=4)
-            logger.info(f"/save_template: Successfully saved template '{original_template_name}' to '{safe_target_filename}'.")
-            return jsonify({"status": "success", "message": f"Template '{original_template_name}' saved as '{safe_target_filename}'.", "filename": safe_target_filename, "template_name": original_template_name}), 200
-        except IOError as e:
-            logger.error(f"/save_template: Error writing template file '{target_file_path}': {e}", exc_info=True)
-            return jsonify({"error": f"Could not save template to file: {str(e)}"}), 500
-        except Exception as e_save: # Catch any other unexpected errors during save
-            logger.error(f"/save_template: Unexpected error saving template '{target_file_path}': {e_save}", exc_info=True)
-            return jsonify({"error": "An unexpected error occurred while saving the template."}), 500
-    
-    # Fallback return for the route if no other condition led to a response.
-    # This should ideally not be reached if logic for conflicts and saving is sound.
-    logger.error(f"/save_template: Reached end of function for '{original_template_name}' without a definitive action. This might indicate a logic flaw.")
-    return jsonify({"error": "An unexpected internal server error occurred. Template processing was inconclusive."}), 500
+    # Save template using storage service
+    try:
+        success = storage_service.save_template(sanitized_name, template_data)
+        if success:
+            logger.info(f"/save_template: Successfully saved template '{original_template_name}' to {storage_service.get_storage_info()['backend']} storage.")
+            return jsonify({
+                "status": "success", 
+                "message": f"Template '{original_template_name}' saved successfully to {storage_service.get_storage_info()['backend']} storage.", 
+                "filename": f"{sanitized_name}.json", 
+                "template_name": original_template_name,
+                "storage_backend": storage_service.get_storage_info()['backend']
+            }), 200
+        else:
+            logger.error(f"/save_template: Failed to save template '{original_template_name}' to storage.")
+            return jsonify({"error": "Failed to save template to storage."}), 500
+            
+    except Exception as e:
+        logger.error(f"/save_template: Unexpected error saving template '{original_template_name}': {e}", exc_info=True)
+        return jsonify({"error": f"An unexpected error occurred while saving the template: {str(e)}"}), 500
 
 @app.route('/download_processed_data', methods=['POST'])
 def download_processed_data_route():
@@ -711,34 +833,33 @@ def download_processed_data_route():
 
 @app.route('/list_templates', methods=['GET'])
 def list_templates_route():
-    """List all templates available in the templates_storage directory."""
-    logger.info("Retrieving template list.")
+    """List all templates available in storage."""
+    logger.info("Retrieving template list from storage.")
     templates = []
     
     try:
-        if os.path.exists(TEMPLATES_DIR):
-            for filename in os.listdir(TEMPLATES_DIR):
-                if not filename.endswith('.json'):
-                    continue
-                    
-                try:
-                    filepath = os.path.join(TEMPLATES_DIR, filename)
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        template_data = json.load(f)
-                        
+        template_names = storage_service.list_templates()
+        
+        for template_name in template_names:
+            try:
+                template_data = storage_service.load_template(template_name)
+                if template_data:
                     templates.append({
-                        'filename': filename,
-                        'template_name': template_data.get('template_name', filename),
-                        'creation_timestamp': template_data.get('creation_timestamp', 'Unknown')
+                        'filename': f"{template_name}.json",
+                        'file_id': f"{template_name}.json",
+                        'template_name': template_data.get('template_name', template_name),
+                        'display_name': template_data.get('template_name', template_name),
+                        'creation_timestamp': template_data.get('creation_timestamp', 'Unknown'),
+                        'storage_backend': storage_service.get_storage_info()['backend']
                     })
-                except (IOError, json.JSONDecodeError) as e:
-                    logger.error(f"Error reading template '{filename}': {e}")
+                else:
+                    logger.warning(f"Could not load template data for '{template_name}'")
                     
-            logger.info(f"Successfully listed {len(templates)} templates.")
-            return jsonify(templates)
-        else:
-            logger.warning(f"Templates directory does not exist: {TEMPLATES_DIR}")
-            return jsonify([])
+            except Exception as e:
+                logger.error(f"Error reading template '{template_name}': {e}")
+                    
+        logger.info(f"Successfully listed {len(templates)} templates from {storage_service.get_storage_info()['backend']} storage.")
+        return jsonify({"templates": templates})
             
     except Exception as e:
         logger.error(f"Error listing templates: {e}", exc_info=True)
@@ -750,23 +871,419 @@ def get_template_details_route(template_filename):
     logger.info(f"Getting details for template: {template_filename}")
     
     try:
-        template_path = os.path.join(TEMPLATES_DIR, template_filename)
-        if not os.path.exists(template_path):
+        # Extract template name from filename (remove .json extension)
+        template_name = template_filename
+        if template_name.endswith('.json'):
+            template_name = template_name[:-5]
+        
+        template_data = storage_service.load_template(template_name)
+        if not template_data:
             logger.warning(f"Template not found: {template_filename}")
             return jsonify({"error": f"Template '{template_filename}' not found."}), 404
             
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template_data = json.load(f)
-            
-        logger.info(f"Successfully retrieved details for template: {template_filename}")
+        logger.info(f"Successfully retrieved details for template: {template_filename} from {storage_service.get_storage_info()['backend']} storage")
         return jsonify(template_data)
         
-    except (IOError, json.JSONDecodeError) as e:
-        logger.error(f"Error reading template '{template_filename}': {e}", exc_info=True)
-        return jsonify({"error": f"Error reading template: {str(e)}"}), 500
     except Exception as e:
         logger.error(f"Unexpected error getting template details for '{template_filename}': {e}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while retrieving template details."}), 500
+
+@app.route('/apply_template', methods=['POST'])
+def apply_template_route():
+    """Apply a template to a specific uploaded file."""
+    logger.info("Received request for /apply_template")
+    
+    data = request.get_json()
+    if not data:
+        logger.warning("apply_template_route: No data provided.")
+        return jsonify({"error": "No data provided"}), 400
+    
+    template_filename = data.get('template_filename')
+    file_identifier = data.get('file_identifier')
+    file_type = data.get('file_type')
+    
+    if not template_filename:
+        logger.warning("apply_template_route: Missing template_filename.")
+        return jsonify({"error": "Missing required field: template_filename"}), 400
+    
+    if not file_identifier:
+        logger.warning("apply_template_route: Missing file_identifier.")
+        return jsonify({"error": "Missing required field: file_identifier"}), 400
+    
+    if not file_type:
+        logger.warning("apply_template_route: Missing file_type.")
+        return jsonify({"error": "Missing required field: file_type"}), 400
+    
+    # Load template using storage service
+    template_name = template_filename
+    if template_name.endswith('.json'):
+        template_name = template_name[:-5]
+    
+    template_data = storage_service.load_template(template_name)
+    if not template_data:
+        logger.warning(f"apply_template_route: Template not found: {template_filename}")
+        return jsonify({"error": f"Template file not found: {template_filename}"}), 404
+    
+    try:
+        
+        # Validate template structure
+        if "field_mappings" not in template_data:
+            logger.error(f"apply_template_route: Invalid template structure in {template_filename}")
+            return jsonify({"error": "Invalid template: missing field_mappings"}), 400
+        
+        skip_rows = template_data.get("skip_rows", 0)
+        
+        # Check if file exists
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_identifier)
+        if not os.path.exists(file_path):
+            logger.error(f"apply_template_route: File not found: {file_path}")
+            return jsonify({"error": f"File not found: {file_identifier}"}), 404
+        
+        # Re-extract headers with the template's skip_rows
+        logger.info(f"apply_template_route: Re-extracting headers for {file_identifier} with skip_rows={skip_rows}")
+        
+        if file_type == "PDF":
+            # For PDF files, use the cached data or re-extract
+            pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION.get(file_identifier)
+            if pdf_data:
+                headers = pdf_data.get('headers', [])
+            else:
+                # Re-extract from PDF
+                headers_result = extract_headers_from_pdf_tables(file_path)
+                if isinstance(headers_result, dict) and "error" not in headers_result:
+                    headers = headers_result.get("headers", [])
+                    # Cache the result
+                    TEMP_PDF_DATA_FOR_EXTRACTION[file_identifier] = headers_result
+                else:
+                    logger.error(f"apply_template_route: Error extracting headers from PDF {file_identifier}")
+                    return jsonify({"error": "Error extracting headers from PDF"}), 400
+        else:
+            # For CSV/XLS/XLSX files
+            headers_result = extract_headers(file_path, file_type, skip_rows=skip_rows)
+            if isinstance(headers_result, dict) and "error" in headers_result:
+                logger.error(f"apply_template_route: Error extracting headers: {headers_result['error']}")
+                return jsonify({"error": f"Error extracting headers: {headers_result['error']}"}), 400
+            headers = headers_result if isinstance(headers_result, list) else []
+        
+        if not headers:
+            logger.warning(f"apply_template_route: No headers found in {file_identifier} with skip_rows={skip_rows}")
+            return jsonify({"error": f"No headers found with skip_rows={skip_rows}"}), 400
+        
+        # Apply template mappings
+        template_mappings = template_data.get("field_mappings", [])
+        applied_mappings = []
+        
+        for header in headers:
+            # Look for this header in the template mappings
+            template_mapping = None
+            for mapping in template_mappings:
+                if mapping.get("original_header") == header:
+                    template_mapping = mapping
+                    break
+            
+            if template_mapping:
+                applied_mappings.append({
+                    "original_header": header,
+                    "mapped_field": template_mapping.get("mapped_field", ""),
+                    "confidence": 1.0  # Template mappings have high confidence
+                })
+            else:
+                # Use auto-mapping for headers not in template
+                auto_mapping = header_mapper.generate_mappings([header], FIELD_DEFINITIONS)
+                if auto_mapping:
+                    applied_mappings.append(auto_mapping[0])
+                else:
+                    applied_mappings.append({
+                        "original_header": header,
+                        "mapped_field": "",
+                        "confidence": 0.0
+                    })
+        
+        response_data = {
+            "success": True,
+            "message": f"Template '{template_data.get('template_name', template_filename)}' applied successfully",
+            "template_name": template_data.get("template_name", template_filename),
+            "template_filename": template_filename,
+            "skip_rows": skip_rows,
+            "headers": headers,
+            "field_mappings": applied_mappings,
+            "file_identifier": file_identifier,
+            "file_type": file_type
+        }
+        
+        logger.info(f"apply_template_route: Successfully applied template {template_filename} to {file_identifier}")
+        return jsonify(response_data)
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"apply_template_route: JSON decode error for {template_filename}: {e}")
+        return jsonify({"error": f"Invalid JSON in template file: {template_filename}"}), 400
+    except Exception as e:
+        logger.error(f"apply_template_route: Error applying template {template_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error applying template: {str(e)}"}), 500
+
+@app.route('/delete_template/<path:template_filename>', methods=['DELETE'])
+def delete_template_route(template_filename):
+    """Delete a specific template file using storage service."""
+    logger.info(f"Received request to delete template: {template_filename}")
+    
+    if not template_filename:
+        logger.warning("delete_template_route: No template filename provided.")
+        return jsonify({"error": "Template filename is required."}), 400
+    
+    # Extract template name from filename (remove .json extension)
+    template_name = template_filename
+    if template_name.endswith('.json'):
+        template_name = template_name[:-5]
+    
+    # Check if template exists
+    if not storage_service.template_exists(template_name):
+        logger.warning(f"delete_template_route: Template not found: {template_filename}")
+        return jsonify({"error": f"Template file not found: {template_filename}"}), 404
+    
+    try:
+        success = storage_service.delete_template(template_name)
+        if success:
+            logger.info(f"delete_template_route: Successfully deleted template: {template_filename} from {storage_service.get_storage_info()['backend']} storage")
+            return jsonify({
+                "message": f"Template '{template_filename}' deleted successfully from {storage_service.get_storage_info()['backend']} storage.",
+                "storage_backend": storage_service.get_storage_info()['backend']
+            })
+        else:
+            logger.error(f"delete_template_route: Failed to delete template: {template_filename}")
+            return jsonify({"error": f"Failed to delete template: {template_filename}"}), 500
+    
+    except Exception as e:
+        logger.error(f"delete_template_route: Error deleting template {template_filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error deleting template: {str(e)}"}), 500
+
+@app.route('/field_definitions', methods=['GET'])
+def field_definitions_route():
+    """Get field definitions for template creation."""
+    logger.info("Received request for /field_definitions")
+    return jsonify(FIELD_DEFINITIONS)
+
+@app.route('/storage_status', methods=['GET'])
+def storage_status():
+    """Get current storage configuration and status"""
+    try:
+        storage_info = storage_service.get_storage_info()
+        config_validation = S3Config.validate_config()
+        
+        return jsonify({
+            "storage_info": storage_info,
+            "config_validation": config_validation,
+            "templates_count": len(storage_service.list_templates()),
+            "status": "healthy" if config_validation['valid'] else "warning"
+        })
+    except Exception as e:
+        logger.error(f"Error getting storage status: {e}")
+        return jsonify({"error": f"Error getting storage status: {str(e)}"}), 500
+
+@app.route('/ai_remap_headers', methods=['POST'])
+def ai_remap_headers():
+    """Use Azure OpenAI to intelligently remap headers for a file"""
+    logger.info("Received request for /ai_remap_headers")
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        file_identifier = data.get('file_identifier')
+        headers = data.get('headers', [])
+        
+        if not file_identifier or not headers:
+            return jsonify({"error": "Missing file_identifier or headers"}), 400
+        
+        logger.info(f"🤖 AI remapping {len(headers)} headers for file: {file_identifier}")
+        
+        # Use intelligent batch mapping
+        mappings = header_mapper.generate_intelligent_batch_mapping(headers, FIELD_DEFINITIONS)
+        
+        # Analyze results
+        high_confidence_count = sum(1 for m in mappings if m.get('confidence_score', 0) >= 80)
+        total_mapped = len([m for m in mappings if m.get('mapped_field') != 'N/A'])
+        
+        response_data = {
+            "success": True,
+            "file_identifier": file_identifier,
+            "field_mappings": mappings,
+            "analysis": {
+                "total_headers": len(headers),
+                "high_confidence_mappings": high_confidence_count,
+                "total_mapped": total_mapped,
+                "unmapped": len(headers) - total_mapped
+            },
+            "message": f"🤖 AI analysis complete: {high_confidence_count} high-confidence mappings, {total_mapped} total mapped"
+        }
+        
+        logger.info(f"✅ AI remapping complete for {file_identifier}: {high_confidence_count}/{len(headers)} high-confidence")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Error in AI header remapping: {e}", exc_info=True)
+        return jsonify({"error": f"AI remapping failed: {str(e)}"}), 500
+
+@app.route('/preview_file/<path:filename>', methods=['GET'])
+def preview_file_route(filename):
+    """Get a preview of the parsed/extracted file content."""
+    logger.info(f"Received request to preview parsed content for file: {filename}")
+    
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        logger.error(f"File not found for preview: {file_path}")
+        return jsonify({"error": f"File not found: {filename}"}), 404
+    
+    try:
+        # Check if we have cached extracted text data first
+        if filename in EXTRACTED_TEXT_CACHE:
+            logger.info(f"Using cached extracted text data for {filename}")
+            cached_data = EXTRACTED_TEXT_CACHE[filename]
+            
+            # Get file info
+            file_stats = os.stat(file_path)
+            file_size = file_stats.st_size
+            
+            preview_data = {
+                "filename": filename,
+                "file_size": file_size,
+                "file_type": cached_data.get("file_type", "UNKNOWN"),
+                "extracted_text": cached_data.get("extracted_text", ""),
+                "headers": cached_data.get("headers", []),
+                "data_rows": cached_data.get("sample_rows", []),
+                "total_rows": cached_data.get("total_rows", 0),
+                "parsing_info": cached_data.get("parsing_info", "")
+            }
+            
+            logger.info(f"Successfully returned cached preview data for {filename}")
+            return jsonify(sanitize_data_for_json(preview_data))
+        
+        # Fallback to original logic if no cached data (for backward compatibility)
+        logger.info(f"No cached data found for {filename}, falling back to re-processing")
+        
+        # Get file info
+        file_stats = os.stat(file_path)
+        file_size = file_stats.st_size
+        
+        # Determine file type
+        _, file_extension = os.path.splitext(filename)
+        file_extension = file_extension.lower()
+        
+        preview_data = {
+            "filename": filename,
+            "file_size": file_size,
+            "file_type": file_extension.replace('.', '').upper(),
+            "extracted_text": "",
+            "headers": [],
+            "data_rows": [],
+            "total_rows": 0,
+            "parsing_info": ""
+        }
+        
+        # Use the same extraction logic as the upload process
+        if file_extension in ['.csv']:
+            try:
+                # Extract headers and data using the same method as upload
+                headers_result = extract_headers(file_path, 'CSV', skip_rows=0)
+                if isinstance(headers_result, list):
+                    preview_data["headers"] = headers_result
+                    
+                    # Extract sample data - create mappings for all headers to show all data
+                    all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
+                    data_result = extract_data(file_path, 'CSV', all_headers_mapping, skip_rows=0)
+                    if isinstance(data_result, list):
+                        preview_data["data_rows"] = data_result  # All rows
+                        preview_data["total_rows"] = len(data_result)
+                        
+                        # Generate extracted text using helper function
+                        preview_data["extracted_text"] = generate_extracted_text(
+                            filename=filename,
+                            file_type="CSV",
+                            headers=preview_data['headers'],
+                            data_rows=preview_data['data_rows'],
+                            total_rows=preview_data['total_rows']
+                        )
+                        preview_data["parsing_info"] = f"Successfully parsed CSV with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing CSV file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing CSV: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse CSV: {str(e)}"
+                
+        elif file_extension in ['.xlsx', '.xls']:
+            try:
+                # Extract headers and data using the same method as upload
+                headers_result = extract_headers(file_path, 'XLSX', skip_rows=0)
+                if isinstance(headers_result, list):
+                    preview_data["headers"] = headers_result
+                    
+                    # Extract sample data - create mappings for all headers to show all data
+                    all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
+                    data_result = extract_data(file_path, 'XLSX', all_headers_mapping, skip_rows=0)
+                    if isinstance(data_result, list):
+                        preview_data["data_rows"] = data_result  # All rows
+                        preview_data["total_rows"] = len(data_result)
+                        
+                        # Generate extracted text using helper function
+                        preview_data["extracted_text"] = generate_extracted_text(
+                            filename=filename,
+                            file_type="EXCEL",
+                            headers=preview_data['headers'],
+                            data_rows=preview_data['data_rows'],
+                            total_rows=preview_data['total_rows']
+                        )
+                        preview_data["parsing_info"] = f"Successfully parsed Excel with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing Excel file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing Excel: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse Excel: {str(e)}"
+                
+        elif file_extension == '.pdf':
+            try:
+                # Check if we have cached PDF data first
+                if filename in TEMP_PDF_DATA_FOR_EXTRACTION:
+                    pdf_data = TEMP_PDF_DATA_FOR_EXTRACTION[filename]
+                    preview_data["headers"] = pdf_data.get('headers', [])
+                    preview_data["data_rows"] = pdf_data.get('data_rows', [])[:10]
+                    preview_data["total_rows"] = len(pdf_data.get('data_rows', []))
+                else:
+                    # Extract fresh data using the same method as upload
+                    pdf_result = extract_headers_from_pdf_tables(file_path)
+                    if isinstance(pdf_result, dict) and "error" not in pdf_result:
+                        preview_data["headers"] = pdf_result.get('headers', [])
+                        preview_data["data_rows"] = pdf_result.get('data_rows', [])[:10]
+                        preview_data["total_rows"] = len(pdf_result.get('data_rows', []))
+                
+                if preview_data["headers"]:
+                    # Generate extracted text using helper function
+                    preview_data["extracted_text"] = generate_extracted_text(
+                        filename=filename,
+                        file_type="PDF",
+                        headers=preview_data['headers'],
+                        data_rows=preview_data['data_rows'],
+                        total_rows=preview_data['total_rows']
+                    )
+                    preview_data["parsing_info"] = f"Successfully parsed PDF with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                else:
+                    preview_data["extracted_text"] = "No structured data could be extracted from this PDF file."
+                    preview_data["parsing_info"] = "PDF parsing completed but no tabular data found"
+                        
+            except Exception as e:
+                logger.error(f"Error parsing PDF file {filename}: {e}")
+                preview_data["extracted_text"] = f"Error parsing PDF: {str(e)}"
+                preview_data["parsing_info"] = f"Failed to parse PDF: {str(e)}"
+        
+        else:
+            preview_data["extracted_text"] = f"File type {file_extension} is not supported for content extraction."
+            preview_data["parsing_info"] = f"Unsupported file type: {file_extension}"
+        
+        logger.info(f"Successfully generated parsed content preview for {filename}")
+        return jsonify(sanitize_data_for_json(preview_data))
+        
+    except Exception as e:
+        logger.error(f"Error generating parsed content preview for {filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error generating preview: {str(e)}"}), 500
 
 @app.route('/reprocess_file', methods=['POST'])
 def reprocess_file_route():
@@ -928,6 +1445,12 @@ def detailed_health_check():
         }), 500
 
 # --- Debug/test routes ---
+@app.route('/debug_upload.html', methods=['GET'])
+def debug_upload_page():
+    """Serve debug upload page"""
+    with open('debug_upload.html', 'r') as f:
+        return f.read()
+
 @app.route('/test/list_templates', methods=['GET'])
 def test_list_templates_route():
     """Debug route to view template information."""
@@ -992,3 +1515,35 @@ def debug_info():
     return jsonify(debug_info)
 
 # --- Debug/test routes ---
+
+@app.route('/health/detailed')
+def health_detailed():
+    """Detailed health check with capabilities"""
+    try:
+        # Test basic functionality
+        import pandas as pd
+        import pdfplumber
+        import magic
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "environment": "app_runner",
+            "capabilities": {
+                "pandas": pd.__version__,
+                "pdfplumber": "available",
+                "magic": "available",
+                "azure_openai": azure_openai_configured if 'azure_openai_configured' in globals() else False
+            },
+            "storage": storage_service.get_storage_info() if 'storage_service' in globals() else {"backend": "unknown"}
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }), 500
+
+if __name__ == '__main__':
+    # For local development
+    app.run(debug=True, host='0.0.0.0', port=8088)

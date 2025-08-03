@@ -1,0 +1,13 @@
+{
+  "file_identifier": "HDSupply-converted.csv",
+  "file_type": "CSV",
+  "field_mappings": [
+    {"original_header": "Line", "mapped_field": "DueDate"},
+    {"original_header": "Date", "mapped_field": "InvoiceDate"},
+    {"original_header": "Type", "mapped_field": "N/A"},
+    {"original_header": "Invoice_Number", "mapped_field": "InvoiceID"},
+    {"original_header": "PO_Number", "mapped_field": "PONumber"},
+    {"original_header": "Amount", "mapped_field": "ItemQuantity"}
+  ],
+  "skip_rows": "0"
+}

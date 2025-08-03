@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Upload Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .debug { background: #e3f2fd; color: #1976d2; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Debug Upload Test</h1>
+    
+    <input type="file" id="fileInput" accept=".pdf" />
+    <button onclick="uploadFile()">Upload PDF</button>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    <div id="debug" class="result debug" style="display: none;"></div>
+    
+    <script>
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+        }
+        
+        function showDebug(message) {
+            const debugDiv = document.getElementById('debug');
+            debugDiv.textContent = message;
+            debugDiv.style.display = 'block';
+        }
+        
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showResult('Please select a PDF file first.', 'error');
+                return;
+            }
+            
+            showResult('Uploading...', 'info');
+            showDebug('Starting upload...');
+            
+            const formData = new FormData();
+            formData.append('files[]', file);
+            
+            const startTime = Date.now();
+            
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                const endTime = Date.now();
+                const duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                showDebug(`Response received in ${duration}s
+Status: ${response.status}
+Headers: ${JSON.stringify([...response.headers.entries()], null, 2)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                return response.text().then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        return { data, text, duration };
+                    } catch (e) {
+                        throw new Error(`JSON parse error: ${e.message}. Raw response: ${text.substring(0, 500)}`);
+                    }
+                });
+            })
+            .then(result => {
+                showDebug(`Upload successful!
+Duration: ${result.duration}s
+Response type: ${typeof result.data}
+Response length: ${result.text.length}
+Response structure: ${JSON.stringify(result.data, null, 2)}`);
+                
+                if (Array.isArray(result.data) && result.data.length > 0) {
+                    const uploadResult = result.data[0];
+                    let message = `<h3>Upload Successful! (${result.duration}s)</h3>`;
+                    message += `<p><strong>Success:</strong> ${uploadResult.success}</p>`;
+                    message += `<p><strong>File Type:</strong> ${uploadResult.file_type}</p>`;
+                    message += `<p><strong>Headers:</strong> ${uploadResult.headers ? uploadResult.headers.length : 0}</p>`;
+                    message += `<p><strong>Mappings:</strong> ${uploadResult.field_mappings ? uploadResult.field_mappings.length : 0}</p>`;
+                    message += `<p><strong>Message:</strong> ${uploadResult.message}</p>`;
+                    
+                    if (uploadResult.headers) {
+                        message += `<p><strong>Headers List:</strong> ${uploadResult.headers.join(', ')}</p>`;
+                    }
+                    
+                    showResult(message, 'success');
+                } else {
+                    showResult(`<h3>Unexpected Response</h3><p>${JSON.stringify(result.data)}</p>`, 'error');
+                }
+            })
+            .catch(error => {
+                showDebug(`Upload failed: ${error.message}`);
+                showResult(`<h3>Upload Failed</h3><p><strong>Error:</strong> ${error.message}</p>`, 'error');
+            });
+        }
+    </script>
+</body>
+</html>

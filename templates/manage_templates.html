@@ -3,62 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Mapping Templates</title>
-    <!-- Link to existing CSS or a new one if needed -->
+    <title>Manage Templates - Vendor Statements Processor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-ui.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        /* Basic page styling if not covered by main style.css */
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
-        h1 { text-align: center; color: #2c3e50; }
-        #templatesTableContainer {
-            width: 80%;
-            margin: 30px auto;
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        #templatesTableContainer table { width: 100%; border-collapse: collapse; }
-        #templatesTableContainer th, #templatesTableContainer td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        #templatesTableContainer th { background-color: #3498db; color: #fff; }
-        #templatesTableContainer tr:nth-child(even) { background-color: #f9f9f9; }
-        #templatesTableContainer tr:hover { background-color: #f1f1f1; }
-        .delete-btn {
-            color: #fff;
-            background-color: #e74c3c;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        .delete-btn:hover { background-color: #c0392b; }
-        .back-link { display: block; text-align: center; margin-top: 30px; }
-        .back-link a {
-            text-decoration: none;
-            color: #3498db;
-            font-weight: bold;
-            padding: 10px 15px;
-            border: 1px solid #3498db;
-            border-radius: 4px;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-        .back-link a:hover { background-color: #3498db; color: #fff; }
-        #loadingMessage { text-align: center; color: #7f8c8d; font-size: 1.2em; }
-        #errorMessage { color: #e74c3c; text-align: center; padding:10px; border: 1px solid #e74c3c; background-color: #fdd; border-radius: 4px; margin-bottom: 15px; }
-    </style>
 </head>
 <body>
-    <h1>Manage Mapping Templates</h1>
+    <div class="main-container">
+        <div class="header">
+            <h1>📋 Template Management</h1>
+            <p>Create, edit, and manage your vendor statement templates</p>
+        </div>
 
-    <div id="templatesTableContainer">
-        <p id="loadingMessage">Loading templates...</p>
-        <div id="errorMessage" style="display:none;"></div>
-        <!-- Templates will be listed here by JavaScript -->
+        <div class="content">
+            <nav class="navigation">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                    ← Back to Upload
+                </a>
+                <button id="createNewTemplateBtn" class="btn btn-primary">
+                    ➕ Create New Template
+                </button>
+            </nav>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Your Templates</h2>
+                    <p class="card-subtitle">Manage templates for automatic vendor statement processing</p>
+                </div>
+                <div class="card-body">
+                    <div id="loadingMessage" class="text-center">
+                        <div style="font-size: 2rem; margin-bottom: 16px;">⏳</div>
+                        <p>Loading templates...</p>
+                    </div>
+                    <div id="errorMessage" class="card" style="display:none; background: #fee2e2; border: 1px solid #fecaca;">
+                        <div class="card-body text-center" style="color: #991b1b;">
+                            <div style="font-size: 2rem; margin-bottom: 16px;">⚠️</div>
+                            <p id="errorText"></p>
+                        </div>
+                    </div>
+                    <div id="templatesTableContainer">
+                        <!-- Templates will be listed here by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="back-link">
-        <a href="{{ url_for('index') }}">Back to Main Upload Page</a>
+    <!-- Create Template Modal -->
+    <div id="createTemplateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Create New Template</h3>
+                <button type="button" class="modal-close" id="cancelCreateTemplate">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="createTemplateForm">
+                    <div class="form-group">
+                        <label for="templateName" class="form-label">Template Name</label>
+                        <input type="text" id="templateName" name="templateName" required class="form-control" placeholder="e.g., Acme Corp, Basic Statement">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="skipRows" class="form-label">Skip Rows</label>
+                        <input type="number" id="skipRows" name="skipRows" value="0" min="0" class="form-control">
+                        <small style="color: #6c757d; font-size: 0.875rem;">Number of rows to skip before looking for headers</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Field Mappings</label>
+                        <div id="fieldMappingsContainer">
+                            <div class="field-mapping-row" style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
+                                <input type="text" placeholder="Original Header" class="original-header form-control" style="flex: 1;">
+                                <select class="mapped-field form-control form-select" style="flex: 1;">
+                                    <option value="">Select Field...</option>
+                                </select>
+                                <button type="button" class="remove-mapping-btn btn btn-danger btn-sm">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" id="addMappingBtn" class="btn btn-secondary btn-sm">➕ Add Mapping</button>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="cancelCreateTemplateFooter" class="btn btn-secondary">Cancel</button>
+                <button type="submit" form="createTemplateForm" class="btn btn-primary">✨ Create Template</button>
+            </div>
+        </div>
     </div>
 
     <!-- JavaScript file for this page -->

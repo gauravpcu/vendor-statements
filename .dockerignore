@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Local development
+.env
+.env.local
+.env.example
+
+# Logs
+*.log
+logs/
+upload_history.log
+
+# Temporary files
+tmp/
+temp/
+
+# Test files
+test_*
+*_test.py
+tests/
+
+# Deployment scripts
+deploy-apprunner.sh
+apprunner-service.json
+
+# Local uploads (will be recreated)
+uploads/*
+!uploads/.gitkeep

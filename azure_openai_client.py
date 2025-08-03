@@ -41,25 +41,17 @@ def test_azure_openai_connection():
         return {"success": False, "message": message, "details": "Configuration missing."}
 
     try:
-        # A simple, low-cost request: list models (if permitted by policy) or a tiny completion.
-        # Using a simple completion request as it's more universally available.
-        # Ensure the AZURE_OAI_DEPLOYMENT_NAME is for a completions model if using this test.
-        logger.info(f"Attempting test completion with deployment: {AZURE_OAI_DEPLOYMENT_NAME}")
-        response = client.completions.create(
-            model=AZURE_OAI_DEPLOYMENT_NAME, # This needs to be a completions model deployment
-            prompt="What is 1+1?",
+        # Use chat completions for modern models like GPT-4o
+        logger.info(f"Attempting test chat completion with deployment: {AZURE_OAI_DEPLOYMENT_NAME}")
+        response = client.chat.completions.create(
+            model=AZURE_OAI_DEPLOYMENT_NAME,
+            messages=[{"role": "user", "content": "What is 1+1?"}],
             max_tokens=5,
             temperature=0
         )
-        # For ChatCompletions model, the call would be:
-        # response = client.chat.completions.create(
-        # model=AZURE_OAI_DEPLOYMENT_NAME,
-        # messages=[{"role": "user", "content": "What is 1+1?"}],
-        # max_tokens=5
-        # )
-        message = f"Azure OpenAI connection test successful. Response: {response.choices[0].text.strip()}"
+        message = f"Azure OpenAI connection test successful. Response: {response.choices[0].message.content.strip()}"
         logger.info(message)
-        return {"success": True, "message": "Connection successful.", "details": response.choices[0].text.strip()}
+        return {"success": True, "message": "Connection successful.", "details": response.choices[0].message.content.strip()}
     except openai.AuthenticationError as e: # Changed from APIAuthenticationError
         error_message = f"Azure OpenAI API Authentication Error: {e}"
         logger.error(error_message)

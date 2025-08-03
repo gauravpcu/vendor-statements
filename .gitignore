@@ -11,6 +11,11 @@ __pycache__/
 
 # Environment variables
 .env
+.env.ec2
+.env.local
+.env.production
+# Allow template files
+!.env.template
 
 # VS Code settings
 .vscode/
@@ -44,3 +49,16 @@ __pycache__/
 # learned_preferences_storage/
 # If these directories should contain default examples to be versioned, then remove above lines.
 # Given they store user-generated content, they are good candidates for .gitignore.
+# EC2 Deployment - Sensitive Files
+*.pem
+*.key
+
+# AWS Credentials
+aws-credentials.txt
+
+# Backup files
+*.bak
+
+# Temporary files
+*.tmp
+*.temp

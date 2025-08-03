@@ -1,0 +1,40 @@
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install only essential system dependencies
+RUN apt-get update && apt-get install -y \
+    libmagic1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies with minimal packages
+COPY requirements.minimal.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app.py pdftocsv.py s3_service.py storage_service.py ./
+COPY azure_openai_client.py chatbot_service.py data_validator.py header_mapper.py ./
+COPY file_parser_minimal.py ./file_parser.py
+COPY templates/ templates/
+COPY static/ static/
+COPY config/ config/
+
+# Create necessary directories
+RUN mkdir -p /app/uploads /app/templates_storage /app/learned_preferences_storage
+
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+ENV PYTHONPATH=/app
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the application
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--worker-class", "sync", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
