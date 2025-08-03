@@ -660,8 +660,27 @@ def process_file_data_route():
 
 @app.route('/view_uploaded_file/<path:filename>')
 def view_uploaded_file(filename):
+    """View the original raw file content (before any processing/conversion)"""
     try:
         upload_folder_abs = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        
+        # Check if this is a converted file (ends with -converted.csv)
+        if filename.endswith('-converted.csv'):
+            # Try to find the original file (likely a PDF)
+            base_name = filename.replace('-converted.csv', '')
+            
+            # Look for common original file extensions
+            for ext in ['.pdf', '.PDF']:
+                original_filename = base_name + ext
+                original_path = os.path.join(upload_folder_abs, original_filename)
+                if os.path.exists(original_path):
+                    logger.info(f"Serving original file: {original_filename} instead of converted {filename}")
+                    return send_from_directory(upload_folder_abs, original_filename, as_attachment=False)
+            
+            # If no original found, serve the converted file
+            logger.warning(f"Original file not found for {filename}, serving converted file")
+        
+        # Serve the requested file directly
         logger.info(f"Serving file: {filename} from {upload_folder_abs}")
         return send_from_directory(upload_folder_abs, filename, as_attachment=False)
     except FileNotFoundError:
@@ -670,6 +689,94 @@ def view_uploaded_file(filename):
     except Exception as e:
         logger.error(f"Error serving file {filename}: {e}", exc_info=True)
         return "Error serving file.", 500
+
+@app.route('/view_raw_file/<path:filename>')
+def view_raw_file(filename):
+    """View raw file content in a formatted way, showing original content before any processing"""
+    try:
+        upload_folder_abs = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        
+        # Determine the original filename
+        original_filename = filename
+        if filename.endswith('-converted.csv'):
+            # Try to find the original file (likely a PDF)
+            base_name = filename.replace('-converted.csv', '')
+            for ext in ['.pdf', '.PDF']:
+                potential_original = base_name + ext
+                if os.path.exists(os.path.join(upload_folder_abs, potential_original)):
+                    original_filename = potential_original
+                    break
+        
+        file_path = os.path.join(upload_folder_abs, original_filename)
+        if not os.path.exists(file_path):
+            return jsonify({"error": f"Original file not found: {original_filename}"}), 404
+        
+        # Get file info
+        file_stats = os.stat(file_path)
+        file_size = file_stats.st_size
+        _, file_extension = os.path.splitext(original_filename)
+        file_extension = file_extension.lower()
+        
+        raw_content = {
+            "filename": original_filename,
+            "display_filename": filename,  # The filename shown in UI
+            "file_size": file_size,
+            "file_type": file_extension.replace('.', '').upper(),
+            "content": "",
+            "content_type": "text",
+            "message": ""
+        }
+        
+        # Handle different file types
+        if file_extension == '.pdf':
+            raw_content["content"] = f"PDF File: {original_filename}\nSize: {file_size} bytes\n\nThis is a PDF file. To view the raw content, click 'View Raw File' to download or open in browser."
+            raw_content["content_type"] = "pdf_info"
+            raw_content["message"] = "PDF files cannot be displayed as text. Use 'Preview File' to see extracted data."
+            
+        elif file_extension in ['.csv']:
+            # Read first 50 lines of CSV to show raw content
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = []
+                    for i, line in enumerate(f):
+                        if i >= 50:  # Limit to first 50 lines
+                            lines.append("... (file truncated for display)")
+                            break
+                        lines.append(line.rstrip())
+                    
+                    raw_content["content"] = '\n'.join(lines)
+                    raw_content["content_type"] = "csv_text"
+                    raw_content["message"] = f"Showing first {min(50, len(lines))} lines of CSV file"
+                    
+            except Exception as e:
+                raw_content["content"] = f"Error reading CSV file: {str(e)}"
+                raw_content["content_type"] = "error"
+                
+        elif file_extension in ['.xlsx', '.xls']:
+            raw_content["content"] = f"Excel File: {original_filename}\nSize: {file_size} bytes\n\nThis is an Excel file. Raw binary content cannot be displayed as text.\nUse 'Preview File' to see the extracted data."
+            raw_content["content_type"] = "excel_info"
+            raw_content["message"] = "Excel files cannot be displayed as text. Use 'Preview File' to see extracted data."
+            
+        else:
+            # Try to read as text file
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read(10000)  # Limit to first 10KB
+                    if len(content) == 10000:
+                        content += "\n... (file truncated for display)"
+                    raw_content["content"] = content
+                    raw_content["content_type"] = "text"
+                    raw_content["message"] = "Raw file content"
+            except UnicodeDecodeError:
+                raw_content["content"] = f"Binary File: {original_filename}\nSize: {file_size} bytes\n\nThis appears to be a binary file that cannot be displayed as text."
+                raw_content["content_type"] = "binary_info"
+                raw_content["message"] = "Binary files cannot be displayed as text."
+        
+        return jsonify(sanitize_data_for_json(raw_content))
+        
+    except Exception as e:
+        logger.error(f"Error viewing raw file {filename}: {e}", exc_info=True)
+        return jsonify({"error": f"Error viewing raw file: {str(e)}"}), 500
 
 @app.route('/save_template', methods=['POST'])
 def save_template_route():
