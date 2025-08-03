@@ -1290,27 +1290,68 @@ def preview_file_route(filename):
         # Use the same extraction logic as the upload process
         if file_extension in ['.csv']:
             try:
-                # Extract headers and data using the same method as upload
-                headers_result = extract_headers(file_path, 'CSV', skip_rows=0)
-                if isinstance(headers_result, list):
-                    preview_data["headers"] = headers_result
+                # Try different skip_rows values to find the best data structure
+                best_result = None
+                best_skip_rows = 0
+                max_data_rows = 0
+                
+                # Try skip_rows from 0 to 25 to find the best data structure
+                for skip_rows in range(0, 26):
+                    try:
+                        headers_result = extract_headers(file_path, 'CSV', skip_rows=skip_rows)
+                        if isinstance(headers_result, list) and len(headers_result) > 0:
+                            # Extract sample data to see if we get actual data
+                            all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
+                            data_result = extract_data(file_path, 'CSV', all_headers_mapping, skip_rows=skip_rows)
+                            if isinstance(data_result, list) and len(data_result) > max_data_rows:
+                                max_data_rows = len(data_result)
+                                best_result = {
+                                    'headers': headers_result,
+                                    'data_rows': data_result,
+                                    'skip_rows': skip_rows
+                                }
+                                best_skip_rows = skip_rows
+                    except:
+                        continue
+                
+                if best_result:
+                    preview_data["headers"] = best_result['headers']
+                    preview_data["data_rows"] = best_result['data_rows']
+                    preview_data["total_rows"] = len(best_result['data_rows'])
                     
-                    # Extract sample data - create mappings for all headers to show all data
-                    all_headers_mapping = [{'original_header': header, 'mapped_field': header} for header in headers_result]
-                    data_result = extract_data(file_path, 'CSV', all_headers_mapping, skip_rows=0)
-                    if isinstance(data_result, list):
-                        preview_data["data_rows"] = data_result  # All rows
-                        preview_data["total_rows"] = len(data_result)
-                        
-                        # Generate extracted text using helper function
-                        preview_data["extracted_text"] = generate_extracted_text(
-                            filename=filename,
-                            file_type="CSV",
-                            headers=preview_data['headers'],
-                            data_rows=preview_data['data_rows'],
-                            total_rows=preview_data['total_rows']
-                        )
-                        preview_data["parsing_info"] = f"Successfully parsed CSV with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows"
+                    # Generate extracted text using helper function
+                    preview_data["extracted_text"] = generate_extracted_text(
+                        filename=filename,
+                        file_type="CSV",
+                        headers=preview_data['headers'],
+                        data_rows=preview_data['data_rows'],
+                        total_rows=preview_data['total_rows']
+                    )
+                    preview_data["parsing_info"] = f"Successfully parsed CSV with {len(preview_data['headers'])} headers and {preview_data['total_rows']} rows (skipped {best_skip_rows} header rows)"
+                else:
+                    # Fallback: just try with skip_rows=0
+                    headers_result = extract_headers(file_path, 'CSV', skip_rows=0)
+                    if isinstance(headers_result, list):
+                        preview_data["headers"] = headers_result
+                        preview_data["parsing_info"] = f"Found {len(headers_result)} headers but no data rows could be extracted"
+                    else:
+                        preview_data["parsing_info"] = "Could not parse CSV file structure"
+                    
+                    # Final fallback: show raw CSV content as extracted text
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            lines = []
+                            for i, line in enumerate(f):
+                                if i >= 20:  # Show first 20 lines as preview
+                                    lines.append("... (showing first 20 lines of CSV file)")
+                                    break
+                                lines.append(line.rstrip())
+                            
+                            preview_data["extracted_text"] = '\n'.join(lines)
+                            preview_data["parsing_info"] += " - Showing raw CSV content as fallback"
+                    except Exception as e_fallback:
+                        logger.error(f"Error reading CSV file for fallback preview: {e_fallback}")
+                        preview_data["extracted_text"] = f"Error reading CSV file: {str(e_fallback)}"
                         
             except Exception as e:
                 logger.error(f"Error parsing CSV file {filename}: {e}")
