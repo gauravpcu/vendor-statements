@@ -117,7 +117,16 @@ def extract_tables_from_file_docling(input_doc_path_str: str, output_csv_path_st
     # Memory optimization: Import and configure before heavy operations
     import gc
     import torch
+    import resource
+    
+    # Force garbage collection
     gc.collect()
+    
+    # Set memory limit to prevent system crashes (1.5GB for this process)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (1536*1024*1024, resource.RLIM_INFINITY))
+    except:
+        pass  # Ignore if not supported
     
     # Set PyTorch to use less memory
     if torch.cuda.is_available():
@@ -127,7 +136,9 @@ def extract_tables_from_file_docling(input_doc_path_str: str, output_csv_path_st
     torch.set_num_threads(1)
     
     # Set memory allocation strategy
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:64'
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
     
     from docling.document_converter import DocumentConverter
     
@@ -158,7 +169,25 @@ def extract_tables_from_file_docling(input_doc_path_str: str, output_csv_path_st
     doc_converter = DocumentConverter()
 
     start_time = time.time()
-    conv_res = doc_converter.convert(input_doc_path)
+    
+    # Add timeout to prevent hanging
+    import signal
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError("PDF processing timed out")
+    
+    # Set timeout to 5 minutes
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(300)  # 5 minutes
+    
+    try:
+        conv_res = doc_converter.convert(input_doc_path)
+        signal.alarm(0)  # Cancel timeout
+    except TimeoutError:
+        signal.alarm(0)
+        _log.error("PDF processing timed out after 5 minutes")
+        raise
+    
     all_tables = []
 
     # Function to sanitize DataFrame cells
@@ -222,10 +251,28 @@ def extract_tables_from_file(input_doc_path_str: str, output_csv_path_str: str |
     available_memory_gb = psutil.virtual_memory().available / (1024**3)
     _log.info(f"Available memory: {available_memory_gb:.2f} GB")
     
-    # If we have less than 1GB available, skip docling and use pdfplumber
-    if available_memory_gb < 1.0:
+    # Always use pdfplumber for production stability
+    # Docling has memory issues and can hang on certain PDFs
+    _log.info(f"Using pdfplumber for reliable PDF processing (available memory: {available_memory_gb:.2f} GB)")
+    return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    
+    # Legacy docling code kept for reference but disabled
+    # TODO: Re-enable docling when memory issues are resolved
+    """
+    # If we have less than 3GB available, skip docling and use pdfplumber
+    if available_memory_gb < 3.0:
         _log.warning(f"Low memory ({available_memory_gb:.2f} GB available). Using pdfplumber instead of docling.")
         return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    
+    # Check file size - if PDF is too large, use pdfplumber
+    try:
+        file_size_mb = os.path.getsize(input_doc_path_str) / (1024 * 1024)
+        if file_size_mb > 5:  # If PDF is larger than 5MB
+            _log.warning(f"Large PDF file ({file_size_mb:.1f} MB). Using pdfplumber instead of docling.")
+            return extract_tables_from_file_pdfplumber(input_doc_path_str, output_csv_path_str)
+    except:
+        pass
+    """
     
     # Try docling first for best results
     try:

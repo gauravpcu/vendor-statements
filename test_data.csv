@@ -1,0 +1,4 @@
+Invoice #,Date,Vendor,Amount
+INV-001,2025-01-01,Acme Corp,$1000.00
+INV-002,2025-01-02,Beta LLC,$2500.00
+INV-003,2025-01-03,Gamma Inc,$750.00
