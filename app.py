@@ -734,19 +734,19 @@ def view_raw_file(filename):
             raw_content["message"] = "PDF files cannot be displayed as text. Use 'Preview File' to see extracted data."
             
         elif file_extension in ['.csv']:
-            # Read first 50 lines of CSV to show raw content
+            # Read first 100 lines of CSV to show raw content
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     lines = []
                     for i, line in enumerate(f):
-                        if i >= 50:  # Limit to first 50 lines
+                        if i >= 100:  # Limit to first 100 lines
                             lines.append("... (file truncated for display)")
                             break
                         lines.append(line.rstrip())
                     
                     raw_content["content"] = '\n'.join(lines)
                     raw_content["content_type"] = "csv_text"
-                    raw_content["message"] = f"Showing first {min(50, len(lines))} lines of CSV file"
+                    raw_content["message"] = f"Showing first {min(100, len(lines))} lines of CSV file"
                     
             except Exception as e:
                 raw_content["content"] = f"Error reading CSV file: {str(e)}"

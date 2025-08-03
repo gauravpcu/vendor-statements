@@ -1573,8 +1573,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if (target.classList.contains('view-file-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
             console.log(`[View File Button Clicked] File Identifier: ${fileIdentifier}`);
-            // Assuming the backend serves the file at a specific URL, e.g., /view_uploaded_file/<filename>
-            // Adjust the URL as per your backend route
+            // Open the raw file in a new tab - this will show the original content
             window.open(`/view_uploaded_file/${encodeURIComponent(fileIdentifier)}`, '_blank');
         } else if (target.classList.contains('download-processed-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
