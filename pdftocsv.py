@@ -13,20 +13,37 @@ def is_running_on_apprunner():
     """Check if the code is running on AWS App Runner"""
     return os.environ.get('AWS_EXECUTION_ENV') is not None
 
+def extract_invoice_lines_from_text(text):
+    """Extract structured invoice lines from text"""
+    import re
+    lines = text.split('\n')
+    invoice_lines = []
+    
+    # Pattern for invoice lines: LINE_NUM DATE TYPE INVOICE_NUM [PO_NUM] AMOUNT [INVOICE_NUM AMOUNT]
+    invoice_pattern = r'^(\d+)\s+(\d{2}/\d{2}/\d{2,4})\s+(INVOICE|CREDIT MEMO)\s+(\d+)\s+(?:([A-Z0-9]+)\s+)?(-?\d+\.\d{2})\s+\d+\s+-?\d+\.\d{2}\s*$'
+    
+    for line in lines:
+        line = line.strip()
+        match = re.match(invoice_pattern, line)
+        if match:
+            line_num, date, doc_type, invoice_num, po_num, amount = match.groups()
+            invoice_lines.append({
+                'Line': line_num,
+                'Date': date,
+                'Type': doc_type,
+                'Invoice_Number': invoice_num,
+                'PO_Number': po_num or '',
+                'Amount': float(amount)
+            })
+    
+    return invoice_lines
+
 def extract_tables_from_file_pdfplumber(input_doc_path_str: str, output_csv_path_str: str | None = None):
     """
-    Extract tables from a PDF file using pdfplumber (Memory optimized)
+    Extract tables from a PDF file using improved pdfplumber logic
     """
     logging.basicConfig(level=logging.INFO)
     
-    # Memory optimization: Set limits
-    import resource
-    try:
-        # Limit memory usage to 1GB per process
-        resource.setrlimit(resource.RLIMIT_AS, (1024*1024*1024, 1024*1024*1024))
-    except:
-        pass  # Ignore if not supported
-
     input_doc_path = Path(input_doc_path_str)
 
     if not input_doc_path.is_file():
@@ -38,32 +55,80 @@ def extract_tables_from_file_pdfplumber(input_doc_path_str: str, output_csv_path
         _log.info(f"Output path provided: {output_csv_path_str}")
         output_csv_path = Path(output_csv_path_str)
         output_dir = output_csv_path.parent
-        doc_filename_for_output = output_csv_path.stem
     else:
-        _log.info(f"No output path provided. Using default output path in 'scratch' directory for {input_doc_path.name}.")
-        # If no output path is provided, use the 'scratch' directory
+        _log.info(f"No output path provided. Using default output path.")
         output_dir = Path("scratch")
-        doc_filename_for_output = input_doc_path.stem
-        output_csv_path = output_dir / f"{doc_filename_for_output}-all_tables.csv"
+        output_csv_path = output_dir / f"{input_doc_path.stem}-extracted.csv"
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     start_time = time.time()
-    all_tables = []
+    all_invoice_lines = []
 
     try:
-        # Use pdfplumber to extract tables
+        with pdfplumber.open(input_doc_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                _log.info(f"Processing page {page_num + 1}")
+                
+                # Extract text from page
+                text = page.extract_text()
+                if text:
+                    # Try to extract structured invoice lines first
+                    page_lines = extract_invoice_lines_from_text(text)
+                    if page_lines:
+                        all_invoice_lines.extend(page_lines)
+                        _log.info(f"Found {len(page_lines)} invoice lines on page {page_num + 1}")
+                    
+    except Exception as e:
+        _log.error(f"Error processing PDF: {e}")
+        return []
+
+    # If we found structured invoice data, use that
+    if all_invoice_lines:
+        _log.info(f"Using structured invoice extraction: {len(all_invoice_lines)} lines found")
+        
+        # Create DataFrame from invoice lines
+        df = pd.DataFrame(all_invoice_lines)
+        df = df.sort_values('Line').reset_index(drop=True)
+        
+        _log.info(f"Extracted structured data with columns: {list(df.columns)}")
+        
+        # Save to CSV
+        df.to_csv(output_csv_path, index=False)
+        _log.info(f"Saved structured data to {output_csv_path}")
+        
+        end_time = time.time() - start_time
+        _log.info(f"Document converted and tables exported in {end_time:.2f} seconds.")
+        
+        return [df]
+    
+    # Fallback to original table extraction if no structured data found
+    _log.info("No structured invoice data found, falling back to table extraction")
+    
+    all_tables = []
+    
+    try:
         with pdfplumber.open(input_doc_path) as pdf:
             for page_num, page in enumerate(pdf.pages):
                 tables = page.extract_tables()
                 if tables:
                     for table_idx, table in enumerate(tables):
-                        # Convert table to DataFrame
-                        df = pd.DataFrame(table[1:], columns=table[0] if table else [])
-                        all_tables.append(df)
-                        _log.info(f"Extracted table {table_idx + 1} from page {page_num + 1}")
+                        if table and len(table) > 1:
+                            # Convert table to DataFrame
+                            df = pd.DataFrame(table[1:], columns=table[0] if table[0] else [])
+                            # Remove empty columns
+                            df = df.dropna(axis=1, how='all')
+                            df = df.loc[:, (df != '').any(axis=0)]
+                            
+                            if not df.empty and len(df.columns) >= 2:
+                                all_tables.append(df)
+                                _log.info(f"Extracted table {table_idx + 1} from page {page_num + 1}")
     except Exception as e:
         _log.error(f"Error extracting tables using pdfplumber: {e}")
+        return []
+
+    if not all_tables:
+        _log.warning("No tables found in PDF")
         return []
 
     # Function to sanitize DataFrame cells

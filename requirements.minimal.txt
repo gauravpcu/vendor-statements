@@ -1,0 +1,28 @@
+# Core Flask dependencies
+Flask==3.0.3
+gunicorn==22.0.0
+
+# PDF processing (minimal)
+pdfplumber==0.11.4
+
+# Data processing
+pandas==2.2.2
+
+# Azure OpenAI
+openai==1.35.13
+
+# AWS SDK
+boto3==1.34.144
+
+# File type detection
+python-magic==0.4.27
+
+# HTTP requests
+requests==2.32.3
+
+# System monitoring
+psutil==6.0.0
+
+# Environment variables
+python-dotenv==1.0.1
+

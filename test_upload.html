@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Upload Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .upload-area { border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; }
+        .result { margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .loading { background: #fff3e0; color: #ef6c00; }
+    </style>
+</head>
+<body>
+    <h1>PDF Upload Test</h1>
+    <p>This is a simple test page to debug PDF upload issues.</p>
+    
+    <div class="upload-area">
+        <input type="file" id="fileInput" accept=".pdf" />
+        <br><br>
+        <button onclick="uploadFile()">Upload PDF</button>
+    </div>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    
+    <script>
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+        }
+        
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showResult('Please select a PDF file first.', 'error');
+                return;
+            }
+            
+            if (file.type !== 'application/pdf') {
+                showResult('Please select a PDF file.', 'error');
+                return;
+            }
+            
+            showResult(`Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)...`, 'loading');
+            
+            const formData = new FormData();
+            formData.append('files[]', file);
+            
+            const startTime = Date.now();
+            
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                const endTime = Date.now();
+                const duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                return response.json().then(data => ({
+                    status: response.status,
+                    data: data,
+                    duration: duration
+                }));
+            })
+            .then(result => {
+                console.log('Upload result:', result);
+                
+                let message = `<h3>Upload Successful! (${result.duration}s)</h3>`;
+                message += `<p><strong>Status:</strong> ${result.status}</p>`;
+                
+                if (Array.isArray(result.data) && result.data.length > 0) {
+                    const uploadResult = result.data[0];
+                    message += `<p><strong>Success:</strong> ${uploadResult.success}</p>`;
+                    message += `<p><strong>File Type:</strong> ${uploadResult.file_type}</p>`;
+                    message += `<p><strong>Headers Found:</strong> ${uploadResult.headers ? uploadResult.headers.length : 0}</p>`;
+                    message += `<p><strong>Field Mappings:</strong> ${uploadResult.field_mappings ? uploadResult.field_mappings.length : 0}</p>`;
+                    message += `<p><strong>Message:</strong> ${uploadResult.message}</p>`;
+                } else {
+                    message += `<p><strong>Response:</strong> ${JSON.stringify(result.data)}</p>`;
+                }
+                
+                showResult(message, 'success');
+            })
+            .catch(error => {
+                console.error('Upload error:', error);
+                showResult(`<h3>Upload Failed</h3><p><strong>Error:</strong> ${error.message}</p>`, 'error');
+            });
+        }
+        
+        // Log page load
+        console.log('Test page loaded');
+        console.log('Current URL:', window.location.href);
+    </script>
+</body>
+</html>

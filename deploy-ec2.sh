@@ -35,7 +35,13 @@ echo "📦 Using AMI: $AMI_ID"
 
 # Create security group if it doesn't exist
 echo "🔒 Setting up security group..."
-if ! aws ec2 describe-security-groups --group-names $SECURITY_GROUP_NAME --region $REGION > /dev/null 2>&1; then
+SECURITY_GROUP_ID=$(aws ec2 describe-security-groups \
+    --filters "Name=group-name,Values=$SECURITY_GROUP_NAME" "Name=vpc-id,Values=$VPC_ID" \
+    --region $REGION \
+    --query 'SecurityGroups[0].GroupId' \
+    --output text 2>/dev/null || echo "None")
+
+if [ "$SECURITY_GROUP_ID" = "None" ] || [ -z "$SECURITY_GROUP_ID" ]; then
     echo "Creating security group: $SECURITY_GROUP_NAME"
     SECURITY_GROUP_ID=$(aws ec2 create-security-group \
         --group-name $SECURITY_GROUP_NAME \
@@ -76,11 +82,6 @@ if ! aws ec2 describe-security-groups --group-names $SECURITY_GROUP_NAME --regio
     
     echo "✅ Security group created: $SECURITY_GROUP_ID"
 else
-    SECURITY_GROUP_ID=$(aws ec2 describe-security-groups \
-        --group-names $SECURITY_GROUP_NAME \
-        --region $REGION \
-        --query 'SecurityGroups[0].GroupId' \
-        --output text)
     echo "✅ Using existing security group: $SECURITY_GROUP_ID"
 fi
 

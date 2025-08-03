@@ -1445,6 +1445,12 @@ def detailed_health_check():
         }), 500
 
 # --- Debug/test routes ---
+@app.route('/debug_upload.html', methods=['GET'])
+def debug_upload_page():
+    """Serve debug upload page"""
+    with open('debug_upload.html', 'r') as f:
+        return f.read()
+
 @app.route('/test/list_templates', methods=['GET'])
 def test_list_templates_route():
     """Debug route to view template information."""
