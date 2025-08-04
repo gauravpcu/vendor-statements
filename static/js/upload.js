@@ -1216,12 +1216,21 @@ document.addEventListener('DOMContentLoaded', function () {
                                 // 2. Template Selection dropdown (conditional on success)
                                 if (fileResult.success) {
                                     settingsItems.push(`
-                                        <span class="setting-item template-select-group">
-                                            <label for="templateSelect-${fileIdentifierSafe}">Template:</label>
-                                            <select id="templateSelect-${fileIdentifierSafe}" class="template-select modern-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
-                                                <option value="">-- Select a Template --</option>
-                                            </select>
-                                        </span>
+                                        <div class="setting-item template-select-group">
+                                            <div class="template-controls-row">
+                                                <div class="template-select-container">
+                                                    <label for="templateSelect-${fileIdentifierSafe}">Template:</label>
+                                                    <select id="templateSelect-${fileIdentifierSafe}" class="template-select modern-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
+                                                        <option value="">-- Select a Template --</option>
+                                                    </select>
+                                                </div>
+                                                <div class="template-action-buttons">
+                                                    <button class="process-file-button btn btn-success btn-sm" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}">🚀 Process</button>
+                                                    <button class="view-file-button btn btn-secondary btn-sm" data-file-identifier="${fileResult.filename}">📄 View Original</button>
+                                                    <button class="download-processed-button btn btn-primary btn-sm" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download</button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     `);
                                 }
 
@@ -1264,6 +1273,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                                     <span class="headers-count">📋 ${fileResult.headers ? fileResult.headers.length : 0} headers</span>
                                                     <span class="mappings-count">🔗 ${fileResult.field_mappings ? fileResult.field_mappings.length : 0} mappings</span>
                                                     <span class="file-status-badge ${fileResult.success ? 'success' : 'error'}">${statusIcon} ${fileResult.success ? 'Ready' : 'Failed'}</span>
+                                                    <button class="preview-file-button btn btn-info btn-sm" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''} style="margin-left: 10px;">👁️ View File</button>
                                                 </div>
                                                 ${templateInfo}
                                             </div>
@@ -1273,11 +1283,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                         </div>
                                     </div>
                                     ${settingsBoxHTML}
-                                    <div class="mapping-controls-box">
-                                        <button class="process-file-button btn btn-success" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}" ${!fileResult.success ? 'disabled' : ''}>🚀 Process File Data</button>
-                                        <button class="preview-file-button btn btn-info" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>👁️ View File</button>
-                                        <button class="download-processed-button btn btn-primary" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download Results</button>
-                                    </div>
+
                                     ${saveTemplateButtonHTML}
                                     <div class="mapping-table-container" id="mapping-table-container-${fileIdentifierSafe}"></div>
                                     <div class="data-preview-area" id="data-preview-${fileIdentifierSafe}"></div>

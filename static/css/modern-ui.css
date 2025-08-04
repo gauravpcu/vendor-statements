@@ -1100,4 +1100,76 @@ body {
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
+}/* ===== T
+EMPLATE CONTROLS LAYOUT ===== */
+.template-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.template-select-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.template-select-container label {
+    font-weight: 500;
+    color: #374151;
+    white-space: nowrap;
+}
+
+.template-action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.template-action-buttons .btn {
+    font-size: 0.875rem;
+    padding: 6px 12px;
+    white-space: nowrap;
+}
+
+/* File meta row button styling */
+.file-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.file-meta-row .btn {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .template-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .template-select-container {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
+    }
+    
+    .template-action-buttons {
+        justify-content: center;
+    }
+    
+    .file-meta-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
 }
