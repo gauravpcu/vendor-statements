@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const files = fileInput.files;
         if (files.length > 0 && uploadArea) {
             const fileList = Array.from(files).map(file => file.name).join(', ');
-            const uploadText = uploadArea.querySelector('.upload-text');
+            const uploadText = uploadArea.querySelector('.upload-text-compact') || uploadArea.querySelector('.upload-text');
             if (uploadText) {
                 uploadText.innerHTML = `<strong>${files.length} file(s) selected:</strong><br><small>${fileList}</small>`;
             }
@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Extracted Text section - NEW SECTION
         if (previewData.extracted_text && previewData.extracted_text.trim()) {
             const extractedTextSection = document.createElement('div');
-            
+
             // Header with copy button
             const headerDiv = document.createElement('div');
             headerDiv.className = 'extracted-text-header';
@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <h4 style="color: #2c3e50; margin: 0;">📄 Extracted Text Content</h4>
                 <button class="extracted-text-copy-btn" onclick="copyExtractedText(this)">📋 Copy</button>
             `;
-            
+
             const descriptionP = document.createElement('p');
             descriptionP.style.cssText = 'font-size: 12px; color: #666; margin: 8px 0 12px 0;';
             descriptionP.textContent = 'This shows the parsed and structured text content from the file.';
@@ -334,10 +334,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Global function for copying extracted text
-    window.copyExtractedText = function(button) {
+    window.copyExtractedText = function (button) {
         const textContainer = button.closest('.extracted-text-header').nextElementSibling.nextElementSibling;
         const textToCopy = textContainer.dataset.extractedText;
-        
+
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = button.textContent;
@@ -365,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
-        
+
         try {
             const successful = document.execCommand('copy');
             if (successful) {
@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.style.background = '#007bff';
             }, 2000);
         }
-        
+
         document.body.removeChild(textArea);
     }
 
@@ -482,11 +482,11 @@ document.addEventListener('DOMContentLoaded', function () {
     function highlightUnmappedFields(fileEntryElement) {
         const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         let unmappedCount = 0;
-        
+
         mappingRows.forEach(row => {
             const mappedFieldSelect = row.cells[1].querySelector('select');
             const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
-            
+
             if (!mappedField || mappedField === '') {
                 // Highlight unmapped field
                 row.style.backgroundColor = '#fff3cd';
@@ -498,12 +498,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 row.style.border = '';
             }
         });
-        
+
         return unmappedCount;
     }
 
     // Function to trigger AI remapping of headers
-    window.triggerAIRemapping = function(fileIdentifier, contextElement) {
+    window.triggerAIRemapping = function (fileIdentifier, contextElement) {
         console.log("[triggerAIRemapping] Called for fileIdentifier:", fileIdentifier);
         const fileEntryElement = contextElement.closest('.file-entry');
         if (!fileEntryElement) {
@@ -515,7 +515,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Collect current headers
         const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         const headers = [];
-        
+
         mappingRows.forEach(row => {
             const originalHeader = row.cells[0].textContent;
             headers.push(originalHeader);
@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const originalText = button.textContent;
         button.textContent = '🤖 AI Analyzing...';
         button.disabled = true;
-        
+
         displayMessage(`🤖 AI is analyzing ${headers.length} headers for intelligent mapping...`);
 
         // Call AI remapping API
@@ -545,95 +545,95 @@ document.addEventListener('DOMContentLoaded', function () {
                 headers: headers
             })
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`AI remapping failed: ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log("[triggerAIRemapping] AI response:", data);
-            
-            if (data.success && data.field_mappings) {
-                // Apply AI mappings to the UI
-                let appliedCount = 0;
-                let highConfidenceCount = 0;
-                
-                mappingRows.forEach((row, index) => {
-                    const mappedFieldSelect = row.cells[1].querySelector('select');
-                    const mapping = data.field_mappings[index];
-                    
-                    if (mapping && mapping.mapped_field && mapping.mapped_field !== 'N/A') {
-                        // Find the option in the select
-                        const option = Array.from(mappedFieldSelect.options).find(opt => opt.value === mapping.mapped_field);
-                        if (option) {
-                            mappedFieldSelect.value = mapping.mapped_field;
-                            appliedCount++;
-                            
-                            // Update confidence display
-                            const confidenceCell = row.cells[2];
-                            const confidence = mapping.confidence_score || 0;
-                            confidenceCell.textContent = `${confidence}%`;
-                            
-                            // Highlight high-confidence mappings
-                            if (confidence >= 80) {
-                                highConfidenceCount++;
-                                row.style.backgroundColor = '#d4edda'; // Light green
-                                row.style.border = '1px solid #c3e6cb';
-                            } else if (confidence >= 60) {
-                                row.style.backgroundColor = '#fff3cd'; // Light yellow
-                                row.style.border = '1px solid #ffeaa7';
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`AI remapping failed: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("[triggerAIRemapping] AI response:", data);
+
+                if (data.success && data.field_mappings) {
+                    // Apply AI mappings to the UI
+                    let appliedCount = 0;
+                    let highConfidenceCount = 0;
+
+                    mappingRows.forEach((row, index) => {
+                        const mappedFieldSelect = row.cells[1].querySelector('select');
+                        const mapping = data.field_mappings[index];
+
+                        if (mapping && mapping.mapped_field && mapping.mapped_field !== 'N/A') {
+                            // Find the option in the select
+                            const option = Array.from(mappedFieldSelect.options).find(opt => opt.value === mapping.mapped_field);
+                            if (option) {
+                                mappedFieldSelect.value = mapping.mapped_field;
+                                appliedCount++;
+
+                                // Update confidence display
+                                const confidenceCell = row.cells[2];
+                                const confidence = mapping.confidence_score || 0;
+                                confidenceCell.textContent = `${confidence}%`;
+
+                                // Highlight high-confidence mappings
+                                if (confidence >= 80) {
+                                    highConfidenceCount++;
+                                    row.style.backgroundColor = '#d4edda'; // Light green
+                                    row.style.border = '1px solid #c3e6cb';
+                                } else if (confidence >= 60) {
+                                    row.style.backgroundColor = '#fff3cd'; // Light yellow
+                                    row.style.border = '1px solid #ffeaa7';
+                                }
                             }
                         }
-                    }
-                });
-                
-                const analysis = data.analysis || {};
-                const message = `🤖 AI Mapping Complete!\n\n` +
-                    `✅ ${appliedCount} fields mapped\n` +
-                    `🎯 ${highConfidenceCount} high-confidence mappings\n` +
-                    `📊 ${analysis.unmapped || 0} fields unmapped\n\n` +
-                    `Green = High confidence (80%+)\n` +
-                    `Yellow = Medium confidence (60-79%)\n` +
-                    `Review and adjust as needed.`;
-                
-                displayMessage(message);
-                console.log(`[triggerAIRemapping] Applied ${appliedCount} AI mappings, ${highConfidenceCount} high-confidence`);
-            } else {
-                displayMessage("AI remapping completed but no mappings were applied.", true);
-            }
-        })
-        .catch(error => {
-            console.error("[triggerAIRemapping] Error:", error);
-            displayMessage(`AI remapping failed: ${error.message}`, true);
-        })
-        .finally(() => {
-            // Restore button state
-            button.textContent = originalText;
-            button.disabled = false;
-        });
+                    });
+
+                    const analysis = data.analysis || {};
+                    const message = `🤖 AI Mapping Complete!\n\n` +
+                        `✅ ${appliedCount} fields mapped\n` +
+                        `🎯 ${highConfidenceCount} high-confidence mappings\n` +
+                        `📊 ${analysis.unmapped || 0} fields unmapped\n\n` +
+                        `Green = High confidence (80%+)\n` +
+                        `Yellow = Medium confidence (60-79%)\n` +
+                        `Review and adjust as needed.`;
+
+                    displayMessage(message);
+                    console.log(`[triggerAIRemapping] Applied ${appliedCount} AI mappings, ${highConfidenceCount} high-confidence`);
+                } else {
+                    displayMessage("AI remapping completed but no mappings were applied.", true);
+                }
+            })
+            .catch(error => {
+                console.error("[triggerAIRemapping] Error:", error);
+                displayMessage(`AI remapping failed: ${error.message}`, true);
+            })
+            .finally(() => {
+                // Restore button state
+                button.textContent = originalText;
+                button.disabled = false;
+            });
     };
 
     // Debug function to test table structure
-    window.debugTableStructure = function(fileIdentifier) {
+    window.debugTableStructure = function (fileIdentifier) {
         const fileEntryElement = document.querySelector(`[data-file-identifier="${fileIdentifier}"]`)?.closest('.file-entry');
         if (!fileEntryElement) {
             console.error("Could not find file entry element");
             return;
         }
-        
+
         console.log("=== Table Structure Debug ===");
         console.log("File entry element:", fileEntryElement);
-        
+
         const allTables = fileEntryElement.querySelectorAll('table');
         console.log(`Found ${allTables.length} tables:`);
-        
+
         allTables.forEach((table, i) => {
             console.log(`Table ${i}:`);
             console.log(`  Classes: ${table.className}`);
             console.log(`  Rows: ${table.querySelectorAll('tr').length}`);
             console.log(`  Selects: ${table.querySelectorAll('select').length}`);
-            
+
             const rows = table.querySelectorAll('tr');
             rows.forEach((row, j) => {
                 const cells = row.querySelectorAll('td, th');
@@ -645,7 +645,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             });
         });
-        
+
         // Test different selectors
         const selectors = [
             '.mapping-table-rows-only tbody tr',
@@ -653,7 +653,7 @@ document.addEventListener('DOMContentLoaded', function () {
             '.mapping-table-rows-only tr',
             'table tr'
         ];
-        
+
         selectors.forEach(selector => {
             const rows = fileEntryElement.querySelectorAll(selector);
             console.log(`Selector "${selector}": ${rows.length} rows`);
@@ -661,7 +661,7 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     // Function to set all unmapped fields to "Ignore"
-    window.setUnmappedFieldsToIgnore = function(fileIdentifier, contextElement) {
+    window.setUnmappedFieldsToIgnore = function (fileIdentifier, contextElement) {
         console.log("[setUnmappedFieldsToIgnore] Called for fileIdentifier:", fileIdentifier);
         const fileEntryElement = contextElement.closest('.file-entry');
         if (!fileEntryElement) {
@@ -672,11 +672,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         let changedCount = 0;
-        
+
         mappingRows.forEach(row => {
             const mappedFieldSelect = row.cells[1].querySelector('select');
             const mappedField = mappedFieldSelect ? mappedFieldSelect.value : null;
-            
+
             if (!mappedField || mappedField === '') {
                 // Set to ignore
                 mappedFieldSelect.value = '__IGNORE__';
@@ -686,7 +686,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 changedCount++;
             }
         });
-        
+
         if (changedCount > 0) {
             displayMessage(`Set ${changedCount} unmapped field(s) to 'Ignore'. You can now save the template.`);
             console.log(`[setUnmappedFieldsToIgnore] Changed ${changedCount} fields to ignore.`);
@@ -706,7 +706,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Highlight unmapped fields before asking for template name
         const unmappedCount = highlightUnmappedFields(fileEntryElement);
-        
+
         if (unmappedCount > 0) {
             const proceedAnyway = confirm(`${unmappedCount} field(s) are not mapped (highlighted in yellow).\n\nDo you want to proceed with saving the template?\n\nClick OK to continue or Cancel to review mappings.`);
             if (!proceedAnyway) {
@@ -723,7 +723,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const currentMappings = [];
         const unmappedHeaders = [];
         const ignoredHeaders = [];
-        
+
         // Try multiple selectors to find the mapping rows
         let mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tbody tr');
         if (mappingRows.length === 0) {
@@ -734,9 +734,9 @@ document.addEventListener('DOMContentLoaded', function () {
             // Try without tbody
             mappingRows = fileEntryElement.querySelectorAll('.mapping-table-rows-only tr');
         }
-        
+
         console.log(`[triggerSaveTemplateWorkflow] Found ${mappingRows.length} mapping rows using selector`);
-        
+
         mappingRows.forEach((row, index) => {
             const originalHeader = row.cells[0].textContent;
             const mappedFieldSelect = row.cells[1].querySelector('select');
@@ -769,14 +769,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (currentMappings.length === 0) {
             let errorMessage = "No field mappings to save for this template.";
-            
+
             // Enhanced debugging information
             console.error("[triggerSaveTemplateWorkflow] Debugging info:");
             console.error("- Total mapping rows found:", mappingRows.length);
             console.error("- Unmapped headers:", unmappedHeaders.length);
             console.error("- Ignored headers:", ignoredHeaders.length);
             console.error("- File entry element:", fileEntryElement);
-            
+
             // Check if we have any mapping tables at all
             const allTables = fileEntryElement.querySelectorAll('table');
             console.error("- Total tables found:", allTables.length);
@@ -784,21 +784,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.error(`  Table ${i} classes:`, table.className);
                 console.error(`  Table ${i} rows:`, table.querySelectorAll('tr').length);
             });
-            
+
             if (unmappedHeaders.length > 0) {
                 errorMessage += `\n\nUnmapped headers (${unmappedHeaders.length}): ${unmappedHeaders.slice(0, 3).join(', ')}${unmappedHeaders.length > 3 ? '...' : ''}`;
                 errorMessage += "\n\nPlease select field mappings from the dropdowns or choose 'Ignore this Field' for headers you don't want to include.";
                 errorMessage += "\n\nTip: Try using the '🤖 AI Remap' button to automatically map fields, then save the template.";
             }
-            
+
             if (ignoredHeaders.length > 0 && unmappedHeaders.length === 0) {
                 errorMessage += `\n\nAll ${ignoredHeaders.length} headers are set to 'Ignore'. Please map at least one header to create a template.`;
             }
-            
+
             if (mappingRows.length === 0) {
                 errorMessage += "\n\n⚠️ Debug: No mapping table found. Please refresh the page and try again.";
             }
-            
+
             console.warn("[triggerSaveTemplateWorkflow] No valid mappings found to save for template.");
             displayMessage(errorMessage, true);
             return;
@@ -809,7 +809,7 @@ document.addEventListener('DOMContentLoaded', function () {
             `✓ ${currentMappings.length} field(s) mapped\n` +
             `${ignoredHeaders.length > 0 ? `- ${ignoredHeaders.length} field(s) ignored\n` : ''}` +
             `${unmappedHeaders.length > 0 ? `⚠ ${unmappedHeaders.length} field(s) unmapped\n` : ''}`;
-        
+
         if (!confirm(confirmMessage)) {
             console.log("[triggerSaveTemplateWorkflow] User cancelled template save.");
             return;
@@ -1534,12 +1534,12 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log("[Save Template Button Clicked] Target dataset:", target.dataset);
             const fileIdentifier = target.dataset.fileIdentifier;
             window.triggerSaveTemplateWorkflow(fileIdentifier, target);
-            
+
         } else if (target.classList.contains('ai-remap-button')) {
             console.log("[AI Remap Button Clicked] Target dataset:", target.dataset);
             const fileIdentifier = target.dataset.fileIdentifier;
             window.triggerAIRemapping(fileIdentifier, target);
-            
+
         } else if (target.classList.contains('ignore-unmapped-button')) {
             console.log("[Ignore Unmapped Button Clicked] Target dataset:", target.dataset);
             const fileIdentifier = target.dataset.fileIdentifier;
@@ -1568,12 +1568,12 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if (target.classList.contains('preview-file-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
             console.log(`[Preview File Button Clicked] File Identifier: ${fileIdentifier}`);
-            
+
             // Get file type from the button's data or from the file entry
             const fileEntryElement = target.closest('.file-entry');
             const fileTypeElement = fileEntryElement.querySelector('.file-type-badge');
             const fileType = fileTypeElement ? fileTypeElement.textContent.trim() : 'UNKNOWN';
-            
+
             // Use the new file viewer for better preview experience
             if (window.fileViewer && fileType !== 'UNKNOWN') {
                 window.fileViewer.viewFile(fileIdentifier, fileType);

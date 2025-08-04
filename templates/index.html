@@ -161,20 +161,22 @@
                 </div>
                 <div class="card-body">
                     <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-                        <div class="upload-area" id="uploadArea">
-                            <div class="upload-icon">📁</div>
-                            <div class="upload-text">
-                                <strong>Choose files</strong> or drag them here
+                        <div class="upload-form-container">
+                            <div class="upload-area-compact" id="uploadArea">
+                                <div class="upload-icon-compact">📁</div>
+                                <div class="upload-text-compact">
+                                    <strong>Choose files</strong> or drag them here
+                                </div>
+                                <div class="upload-hint-compact">
+                                    Supports PDF, Excel (.xlsx, .xls), and CSV files
+                                </div>
+                                <input type="file" name="files[]" id="fileInput" multiple class="hidden-file-input" accept=".pdf,.xlsx,.xls,.csv">
                             </div>
-                            <div class="upload-hint">
-                                Supports PDF, Excel (.xlsx, .xls), and CSV files
+                            <div class="upload-button-container">
+                                <button type="submit" class="btn btn-primary btn-lg upload-button-compact">
+                                    🚀 Upload & Process Files
+                                </button>
                             </div>
-                            <input type="file" name="files[]" id="fileInput" multiple class="hidden-file-input" accept=".pdf,.xlsx,.xls,.csv">
-                        </div>
-                        <div class="text-center mt-3">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                🚀 Upload & Process Files
-                            </button>
                         </div>
                     </form>
                 </div>
