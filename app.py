@@ -165,9 +165,7 @@ def index():
 def manage_templates_page():
     return render_template('manage_templates.html')
 
-@app.route('/manage_preferences')
-def manage_preferences_page():
-    return render_template('manage_preferences.html')
+
 
 @app.route('/upload', methods=['POST'])
 def upload_files():

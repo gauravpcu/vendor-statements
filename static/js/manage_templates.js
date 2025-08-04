@@ -148,11 +148,29 @@ document.addEventListener('DOMContentLoaded', function () {
                     tr.appendChild(timestampTd);
 
                     const actionsTd = document.createElement('td');
+                    actionsTd.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
+                    // View/Edit button
+                    const viewButton = document.createElement('button');
+                    viewButton.classList.add('view-template-btn', 'btn', 'btn-primary', 'btn-sm');
+                    viewButton.dataset.filename = template.file_id;
+                    viewButton.innerHTML = '👁️ View';
+                    actionsTd.appendChild(viewButton);
+
+                    // Edit button
+                    const editButton = document.createElement('button');
+                    editButton.classList.add('edit-template-btn', 'btn', 'btn-secondary', 'btn-sm');
+                    editButton.dataset.filename = template.file_id;
+                    editButton.innerHTML = '✏️ Edit';
+                    actionsTd.appendChild(editButton);
+
+                    // Delete button
                     const deleteButton = document.createElement('button');
                     deleteButton.classList.add('delete-template-btn', 'btn', 'btn-danger', 'btn-sm');
                     deleteButton.dataset.filename = template.file_id;
                     deleteButton.innerHTML = '🗑️ Delete';
                     actionsTd.appendChild(deleteButton);
+
                     tr.appendChild(actionsTd);
 
                     tbody.appendChild(tr);
@@ -170,12 +188,29 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // Event listener for delete buttons (using event delegation)
+    // Event listener for template action buttons (using event delegation)
     templatesTableContainer.addEventListener('click', function (event) {
-        if (event.target.classList.contains('delete-template-btn')) {
-            const templateFilename = event.target.dataset.filename;
+        const templateFilename = event.target.dataset.filename;
+
+        if (event.target.classList.contains('view-template-btn')) {
             if (!templateFilename) {
-                alert('Error: Template filename not found.');
+                showNotification('Error: Template filename not found.', 'error');
+                return;
+            }
+            viewTemplate(templateFilename);
+        }
+
+        else if (event.target.classList.contains('edit-template-btn')) {
+            if (!templateFilename) {
+                showNotification('Error: Template filename not found.', 'error');
+                return;
+            }
+            editTemplate(templateFilename);
+        }
+
+        else if (event.target.classList.contains('delete-template-btn')) {
+            if (!templateFilename) {
+                showNotification('Error: Template filename not found.', 'error');
                 return;
             }
 
@@ -205,6 +240,42 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
     });
+
+    // View Template functionality
+    function viewTemplate(templateFilename) {
+        fetch(`/get_template_details/${encodeURIComponent(templateFilename)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification(`Error loading template: ${data.error}`, 'error');
+                    return;
+                }
+
+                showTemplateViewModal(data);
+            })
+            .catch(error => {
+                console.error('Error fetching template details:', error);
+                showNotification('Error loading template details: ' + error.message, 'error');
+            });
+    }
+
+    // Edit Template functionality
+    function editTemplate(templateFilename) {
+        fetch(`/get_template_details/${encodeURIComponent(templateFilename)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showNotification(`Error loading template: ${data.error}`, 'error');
+                    return;
+                }
+
+                showTemplateEditModal(data, templateFilename);
+            })
+            .catch(error => {
+                console.error('Error fetching template details:', error);
+                showNotification('Error loading template details: ' + error.message, 'error');
+            });
+    }
 
     // Create New Template functionality
     const createNewTemplateBtn = document.getElementById('createNewTemplateBtn');
@@ -370,10 +441,12 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         // Show loading state
-        const submitButton = document.querySelector('#createTemplateForm button[type="submit"]');
-        const originalText = submitButton.innerHTML;
-        submitButton.disabled = true;
-        submitButton.innerHTML = '⏳ Creating...';
+        const submitButton = document.getElementById('createTemplateSubmitBtn');
+        const originalText = submitButton ? submitButton.innerHTML : '✨ Create Template';
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML = '⏳ Creating...';
+        }
 
         // Save template
         fetch('/save_template', {
@@ -399,10 +472,264 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .finally(() => {
                 // Restore button state
-                submitButton.disabled = false;
-                submitButton.innerHTML = originalText;
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalText;
+                }
             });
     });
+
+    // Show Template View Modal
+    function showTemplateViewModal(templateData) {
+        const modal = document.createElement('div');
+        modal.className = 'modal show';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">📋 Template Details: ${templateData.template_name || 'Unknown'}</h3>
+                    <button type="button" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Template Name</label>
+                        <div style="padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;">
+                            ${templateData.template_name || 'N/A'}
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Skip Rows</label>
+                        <div style="padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;">
+                            ${templateData.skip_rows || 0}
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Field Mappings (${templateData.field_mappings ? templateData.field_mappings.length : 0})</label>
+                        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px;">
+                            <table class="table" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th>Original Header</th>
+                                        <th>Mapped Field</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${templateData.field_mappings ? templateData.field_mappings.map(mapping => `
+                                        <tr>
+                                            <td>${mapping.original_header || 'N/A'}</td>
+                                            <td>${fieldDefinitions[mapping.mapped_field]?.display_name || mapping.mapped_field || 'N/A'}</td>
+                                        </tr>
+                                    `).join('') : '<tr><td colspan="2">No mappings found</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Created</label>
+                        <div style="padding: 8px 12px; background: #f8f9fa; border-radius: 6px; border: 1px solid #dee2e6;">
+                            ${templateData.creation_timestamp ? new Date(templateData.creation_timestamp).toLocaleString() : 'N/A'}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary close-modal">Close</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Close modal handlers
+        const closeButtons = modal.querySelectorAll('.modal-close, .close-modal');
+        closeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
+
+    // Show Template Edit Modal
+    function showTemplateEditModal(templateData, templateFilename) {
+        const modal = document.createElement('div');
+        modal.className = 'modal show';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">✏️ Edit Template: ${templateData.template_name || 'Unknown'}</h3>
+                    <button type="button" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="editTemplateForm">
+                        <div class="form-group">
+                            <label for="editTemplateName" class="form-label">Template Name</label>
+                            <input type="text" id="editTemplateName" name="templateName" required class="form-control" value="${templateData.template_name || ''}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editSkipRows" class="form-label">Skip Rows</label>
+                            <input type="number" id="editSkipRows" name="skipRows" value="${templateData.skip_rows || 0}" min="0" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Field Mappings</label>
+                            <div id="editFieldMappingsContainer">
+                                ${templateData.field_mappings ? templateData.field_mappings.map(mapping => `
+                                    <div class="field-mapping-row" style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
+                                        <input type="text" placeholder="Original Header" class="original-header form-control" style="flex: 1;" value="${mapping.original_header || ''}">
+                                        <select class="mapped-field form-control form-select" style="flex: 1;">
+                                            <option value="">Select Field...</option>
+                                            ${Object.keys(fieldDefinitions).map(fieldKey => `
+                                                <option value="${fieldKey}" ${mapping.mapped_field === fieldKey ? 'selected' : ''}>
+                                                    ${fieldDefinitions[fieldKey].display_name || fieldKey}
+                                                </option>
+                                            `).join('')}
+                                        </select>
+                                        <button type="button" class="remove-mapping-btn btn btn-danger btn-sm">Remove</button>
+                                    </div>
+                                `).join('') : ''}
+                            </div>
+                            <button type="button" id="editAddMappingBtn" class="btn btn-secondary btn-sm">➕ Add Mapping</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+                    <button type="button" class="btn btn-primary save-template-changes" data-filename="${templateFilename}">💾 Save Changes</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Add mapping functionality for edit modal
+        const editAddMappingBtn = modal.querySelector('#editAddMappingBtn');
+        const editFieldMappingsContainer = modal.querySelector('#editFieldMappingsContainer');
+
+        editAddMappingBtn.addEventListener('click', function () {
+            const newRow = document.createElement('div');
+            newRow.className = 'field-mapping-row';
+            newRow.style.cssText = 'display: flex; gap: 12px; margin-bottom: 12px; align-items: center;';
+            newRow.innerHTML = `
+                <input type="text" placeholder="Original Header" class="original-header form-control" style="flex: 1;">
+                <select class="mapped-field form-control form-select" style="flex: 1;">
+                    <option value="">Select Field...</option>
+                    ${Object.keys(fieldDefinitions).map(fieldKey => `
+                        <option value="${fieldKey}">${fieldDefinitions[fieldKey].display_name || fieldKey}</option>
+                    `).join('')}
+                </select>
+                <button type="button" class="remove-mapping-btn btn btn-danger btn-sm">Remove</button>
+            `;
+            editFieldMappingsContainer.appendChild(newRow);
+        });
+
+        // Remove mapping functionality
+        editFieldMappingsContainer.addEventListener('click', function (event) {
+            if (event.target.classList.contains('remove-mapping-btn')) {
+                const row = event.target.closest('.field-mapping-row');
+                if (editFieldMappingsContainer.querySelectorAll('.field-mapping-row').length > 1) {
+                    row.remove();
+                } else {
+                    showNotification('At least one mapping row is required.', 'error');
+                }
+            }
+        });
+
+        // Save changes functionality
+        const saveButton = modal.querySelector('.save-template-changes');
+        saveButton.addEventListener('click', function () {
+            const templateName = modal.querySelector('#editTemplateName').value.trim();
+            const skipRows = parseInt(modal.querySelector('#editSkipRows').value) || 0;
+
+            if (!templateName) {
+                showNotification('Template name is required.', 'error');
+                return;
+            }
+
+            // Collect field mappings
+            const mappingRows = editFieldMappingsContainer.querySelectorAll('.field-mapping-row');
+            const fieldMappings = [];
+
+            mappingRows.forEach(row => {
+                const originalHeader = row.querySelector('.original-header').value.trim();
+                const mappedField = row.querySelector('.mapped-field').value;
+
+                if (originalHeader && mappedField) {
+                    fieldMappings.push({
+                        original_header: originalHeader,
+                        mapped_field: mappedField
+                    });
+                }
+            });
+
+            if (fieldMappings.length === 0) {
+                showNotification('At least one field mapping is required.', 'error');
+                return;
+            }
+
+            // Create updated template object
+            const updatedTemplateData = {
+                template_name: templateName,
+                field_mappings: fieldMappings,
+                skip_rows: skipRows,
+                overwrite: true // Allow overwriting when editing
+            };
+
+            // Show loading state
+            const originalText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = '⏳ Saving...';
+
+            // Save updated template
+            fetch('/save_template', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(updatedTemplateData)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' || data.message) {
+                        showNotification(data.message || 'Template updated successfully!', 'success');
+                        document.body.removeChild(modal);
+                        fetchAndDisplayTemplates(); // Refresh the template list
+                    } else {
+                        showNotification(data.error || 'Failed to update template.', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating template:', error);
+                    showNotification('Error updating template: ' + error.message, 'error');
+                })
+                .finally(() => {
+                    // Restore button state
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = originalText;
+                });
+        });
+
+        // Close modal handlers
+        const closeButtons = modal.querySelectorAll('.modal-close, .close-modal');
+        closeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
 
     // Initial call to fetch and display templates
     fetchAndDisplayTemplates();
