@@ -27,6 +27,13 @@ class FileViewer {
         try {
             this.showLoadingModal(filename);
             
+            // Check if this is a converted file that should show the original PDF
+            if (this.isConvertedFile(filename, fileType)) {
+                console.log(`[FileViewer] Detected converted file, showing original PDF instead`);
+                await this.viewOriginalPDF(filename);
+                return;
+            }
+            
             switch (fileType.toUpperCase()) {
                 case 'CSV':
                     await this.viewCSV(filename);
@@ -44,6 +51,50 @@ class FileViewer {
         } catch (error) {
             console.error('[FileViewer] Error viewing file:', error);
             this.showErrorModal(filename, error.message);
+        }
+    }
+
+    /**
+     * Check if this is a converted file (PDF converted to CSV)
+     * @param {string} filename - The filename to check
+     * @param {string} fileType - The reported file type
+     */
+    isConvertedFile(filename, fileType) {
+        // If it's a CSV file that ends with "-converted.csv", it's likely a converted PDF
+        return fileType.toUpperCase() === 'CSV' && filename.endsWith('-converted.csv');
+    }
+
+    /**
+     * View the original PDF file for a converted CSV
+     * @param {string} convertedFilename - The converted CSV filename
+     */
+    async viewOriginalPDF(convertedFilename) {
+        // Extract the base name and try to find the original PDF
+        const baseName = convertedFilename.replace('-converted.csv', '');
+        const originalPDFName = baseName + '.pdf';
+        
+        console.log(`[FileViewer] Looking for original PDF: ${originalPDFName}`);
+        
+        try {
+            // Try to load the original PDF
+            const response = await fetch(`/view_uploaded_file/${encodeURIComponent(originalPDFName)}`);
+            if (!response.ok) {
+                // If original PDF not found, fall back to showing the CSV
+                console.log(`[FileViewer] Original PDF not found, falling back to CSV view`);
+                await this.viewCSV(convertedFilename);
+                return;
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            
+            // Show the PDF with a note that it's the original
+            this.showPDFModal(originalPDFName, pdf, `Original PDF (converted file: ${convertedFilename})`);
+            
+        } catch (error) {
+            console.log(`[FileViewer] Error loading original PDF, falling back to CSV:`, error);
+            // Fallback to showing the CSV if PDF loading fails
+            await this.viewCSV(convertedFilename);
         }
     }
 
@@ -190,8 +241,8 @@ class FileViewer {
     /**
      * Show PDF in a modal
      */
-    async showPDFModal(filename, pdf) {
-        const modal = this.createModal(filename, 'PDF');
+    async showPDFModal(filename, pdf, subtitle = null) {
+        const modal = this.createModal(filename, 'PDF', subtitle);
         const container = modal.querySelector('.file-viewer-body');
         
         container.innerHTML = `
@@ -259,13 +310,19 @@ class FileViewer {
     /**
      * Create modal structure
      */
-    createModal(filename, fileType) {
+    createModal(filename, fileType, subtitle = null) {
         const modal = document.createElement('div');
         modal.className = 'file-viewer-modal';
+        
+        const subtitleHtml = subtitle ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${this.escapeHtml(subtitle)}</p>` : '';
+        
         modal.innerHTML = `
             <div class="file-viewer-content">
                 <div class="file-viewer-header">
-                    <h3 style="margin: 0; flex: 1;">📄 ${this.escapeHtml(filename)} (${fileType})</h3>
+                    <div style="flex: 1;">
+                        <h3 style="margin: 0;">📄 ${this.escapeHtml(filename)} (${fileType})</h3>
+                        ${subtitleHtml}
+                    </div>
                     <button class="file-viewer-close" onclick="fileViewer.closeModal()">&times;</button>
                 </div>
                 <div class="file-viewer-body">
