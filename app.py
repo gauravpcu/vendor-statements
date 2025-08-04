@@ -309,21 +309,35 @@ def upload_files():
                     template_applied_data = None
                     current_skip_rows_for_extraction = 0 # Default for header extraction
 
-                    # 1. Extract Vendor Name from original filename
-                    vendor_name_from_file = ""
+                    # 1. Extract Template Name from original filename (Enhanced Logic)
+                    template_name_from_file = ""
                     if original_filename_for_vendor:
                         name_without_extension = os.path.splitext(original_filename_for_vendor)[0]
                         # Split by the first occurrence of space, underscore, or hyphen
                         parts = re.split(r'[ _-]', name_without_extension, 1)
-                        if parts: vendor_name_from_file = parts[0]
+                        if parts: 
+                            template_name_from_file = parts[0]
+                            logger.info(f"Extracted template name '{template_name_from_file}' from filename '{original_filename_for_vendor}'")
 
-                    # 2. Search for and load Template
-                    if vendor_name_from_file and os.path.exists(TEMPLATES_DIR):
-                        logger.info(f"Attempting to find template for vendor: '{vendor_name_from_file}' from filename '{original_filename_for_vendor}'")
-                        normalized_vendor_name = vendor_name_from_file.lower()
-                        for template_file_in_storage in os.listdir(TEMPLATES_DIR):
+                    # 2. Enhanced Template Search and Auto-Apply Logic
+                    if template_name_from_file and os.path.exists(TEMPLATES_DIR):
+                        logger.info(f"Searching for template matching: '{template_name_from_file}' from filename '{original_filename_for_vendor}'")
+                        normalized_template_name = template_name_from_file.lower()
+                        
+                        # Get all template files and sort by specificity (longer names first for better matching)
+                        template_files = [f for f in os.listdir(TEMPLATES_DIR) if f.endswith(".json")]
+                        template_files.sort(key=lambda x: len(os.path.splitext(x)[0]), reverse=True)
+                        
+                        for template_file_in_storage in template_files:
                             template_base_name = os.path.splitext(template_file_in_storage)[0]
-                            if template_base_name.lower() == normalized_vendor_name and template_file_in_storage.endswith(".json"):
+                            template_base_name_lower = template_base_name.lower()
+                            
+                            # Enhanced matching: exact match or starts with
+                            is_exact_match = template_base_name_lower == normalized_template_name
+                            is_prefix_match = template_base_name_lower.startswith(normalized_template_name + "-") or \
+                                            normalized_template_name.startswith(template_base_name_lower)
+                            
+                            if is_exact_match or is_prefix_match:
                                 try:
                                     template_path = os.path.join(TEMPLATES_DIR, template_file_in_storage)
                                     with open(template_path, 'r', encoding='utf-8') as f_tpl:
@@ -334,10 +348,17 @@ def upload_files():
                                         results_entry["skip_rows"] = current_skip_rows_for_extraction # Set for response
                                         results_entry["applied_template_name"] = loaded_template.get("template_name", template_base_name)
                                         results_entry["applied_template_filename"] = template_file_in_storage
-                                        logger.info(f"Found template '{template_file_in_storage}' for vendor '{vendor_name_from_file}'. Will use its skip_rows: {current_skip_rows_for_extraction}.")
+                                        
+                                        match_type = "exact" if is_exact_match else "prefix"
+                                        logger.info(f"🎯 AUTO-APPLIED template '{template_file_in_storage}' ({match_type} match) for filename '{original_filename_for_vendor}'. Skip rows: {current_skip_rows_for_extraction}")
                                         break # Stop searching once a template is found
                                 except Exception as e_tpl_load:
-                                    logger.error(f"Error loading template {template_file_in_storage} for {vendor_name_from_file}: {e_tpl_load}")
+                                    logger.error(f"Error loading template {template_file_in_storage} for {template_name_from_file}: {e_tpl_load}")
+                        
+                        if not template_applied_data:
+                            logger.info(f"No template found for '{template_name_from_file}'. Available templates: {[os.path.splitext(f)[0] for f in template_files]}")
+                    else:
+                        logger.info(f"No template name extracted from filename '{original_filename_for_vendor}' or templates directory not found")
                     
                     # 3. Extract Actual Headers from file
                     actual_headers_from_file = []
@@ -430,10 +451,10 @@ def upload_files():
                             if template_applied_data:
                                 results_entry["field_mappings"] = template_applied_data.get("field_mappings", [])
                                 # results_entry["skip_rows"] is already set from template
-                                results_entry["message"] = f"Template '{results_entry['applied_template_name']}' auto-applied with {results_entry['skip_rows']} skip rows."
+                                results_entry["message"] = f"🎯 Template '{results_entry['applied_template_name']}' auto-applied (matched first word '{template_name_from_file}') with {results_entry['skip_rows']} skip rows."
                                 logger.info(f"Applied template mappings for '{original_filename_for_vendor}'.")
                             else: # No template applied, generate intelligent AI mappings
-                                logger.info(f"No template found for '{vendor_name_from_file}'. Using Azure OpenAI for intelligent field mapping.")
+                                logger.info(f"No template found for '{template_name_from_file}'. Using Azure OpenAI for intelligent field mapping.")
                                 mappings = header_mapper.generate_mappings(actual_headers_from_file, FIELD_DEFINITIONS)
                                 results_entry["field_mappings"] = mappings
                                 # results_entry["skip_rows"] remains default 0 if no template
@@ -900,41 +921,83 @@ def download_processed_data_route():
         return jsonify({"error": "No data to download"}), 400
 
     try:
-        # Create a string buffer to hold CSV data
-        si = io.StringIO()
-        cw = csv.writer(si)
-
-        # Assuming data_to_download is a list of dictionaries
-        # Write headers (keys from the first dictionary)
-        if data_to_download:
-            headers = data_to_download[0].keys()
-            cw.writerow(headers)
-            # Write data rows
-            for row_dict in data_to_download:
-                # Ensure all values are serializable (e.g., convert None to empty string for CSV)
-                row_values = [str(row_dict.get(h, '')) for h in headers] 
-                cw.writerow(row_values)
+        # Define the specific column headers as requested
+        target_columns = [
+            "Case Number",
+            "Customer Code", 
+            "Customer Name",
+            "Facility Name",
+            "Facility Code",
+            "Account Number",
+            "Supplier Name",
+            "Supplier Code", 
+            "Invoice Number",
+            "Invoice Date",
+            "Invoice Amount"
+        ]
         
+        # Create mapping from field definitions to target columns
+        field_mapping = {
+            "CaseNumber": "Case Number",
+            "CustomerCode": "Customer Code",
+            "CustomerName": "Customer Name", 
+            "FacilityName": "Facility Name",
+            "FacilityCode": "Facility Code",
+            "AccountNumber": "Account Number",
+            "SupplierName": "Supplier Name",
+            "VendorName": "Supplier Name",  # Fallback mapping
+            "SupplierCode": "Supplier Code",
+            "InvoiceNumber": "Invoice Number",
+            "InvoiceID": "Invoice Number",  # Fallback mapping
+            "InvoiceDate": "Invoice Date",
+            "InvoiceAmount": "Invoice Amount",
+            "TotalAmount": "Invoice Amount"  # Fallback mapping
+        }
+        
+        # Create DataFrame with target columns
+        processed_data = []
+        
+        for row_dict in data_to_download:
+            processed_row = {}
+            
+            # Initialize all target columns with empty values
+            for col in target_columns:
+                processed_row[col] = ""
+            
+            # Map data from source fields to target columns
+            for source_field, target_column in field_mapping.items():
+                if source_field in row_dict and target_column in target_columns:
+                    value = row_dict[source_field]
+                    # Convert None to empty string and ensure string format
+                    processed_row[target_column] = str(value) if value is not None else ""
+            
+            processed_data.append(processed_row)
+        
+        # Create DataFrame with the specific column order
+        df = pd.DataFrame(processed_data, columns=target_columns)
+        
+        # Create Excel file in memory
         output = io.BytesIO()
-        output.write(si.getvalue().encode('utf-8'))
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Processed Data', index=False)
+        
         output.seek(0)
-        si.close()
 
         # Sanitize filename for download
         safe_filename_base = "".join(c if c.isalnum() or c in ('_', '-', '.') else '_' for c in file_identifier)
-        download_filename = f"processed_{safe_filename_base}.csv"
+        download_filename = f"processed_{safe_filename_base}.xlsx"
 
-        logger.info(f"/download_processed_data: Sending file '{download_filename}' for '{file_identifier}'.")
+        logger.info(f"/download_processed_data: Sending Excel file '{download_filename}' for '{file_identifier}' with {len(processed_data)} rows.")
         return send_file(
             output,
-            mimetype='text/csv',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
             download_name=download_filename
         )
 
     except Exception as e:
-        logger.error(f"/download_processed_data: Error generating CSV for '{file_identifier}': {e}", exc_info=True)
-        return jsonify({"error": "Error generating CSV file. Please check server logs."}), 500
+        logger.error(f"/download_processed_data: Error generating Excel file for '{file_identifier}': {e}", exc_info=True)
+        return jsonify({"error": "Error generating Excel file. Please check server logs."}), 500
 
 @app.route('/list_templates', methods=['GET'])
 def list_templates_route():

@@ -23,8 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/uploads /app/templates_storage /app/learned_preferences_storage
+# Create necessary directories (but don't overwrite existing ones)
+RUN mkdir -p /app/uploads /app/learned_preferences_storage
 
 # Set environment variables
 ENV FLASK_APP=app.py

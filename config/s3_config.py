@@ -36,7 +36,7 @@ class S3Config:
     STORAGE_MODE = os.getenv('STORAGE_MODE', 'local')  # 'local' or 's3'
     
     # Local fallback directories (when S3 is not available)
-    LOCAL_TEMPLATES_DIR = os.getenv('LOCAL_TEMPLATES_DIR', 'templates')
+    LOCAL_TEMPLATES_DIR = os.getenv('LOCAL_TEMPLATES_DIR', 'templates_storage')
     LOCAL_UPLOADS_DIR = os.getenv('LOCAL_UPLOADS_DIR', 'uploads')
     
     @classmethod

@@ -373,5 +373,125 @@
     ],
     "description": "The name of the company or individual providing the goods or services.",
     "expected_type": "string"
+  },
+  "CaseNumber": {
+    "aliases": [
+      "Case Number",
+      "Case #",
+      "Case ID",
+      "Ticket Number",
+      "Reference Case",
+      "Case Ref",
+      "Support Case",
+      "Issue Number",
+      "Incident Number",
+      "Service Case"
+    ],
+    "description": "A unique case or ticket number associated with the invoice or service request.",
+    "expected_type": "string"
+  },
+  "CustomerCode": {
+    "aliases": [
+      "Customer Code",
+      "Customer ID",
+      "Client Code",
+      "Customer #",
+      "Cust Code",
+      "Customer Ref",
+      "Client ID",
+      "Customer Number",
+      "Cust ID",
+      "Customer Reference"
+    ],
+    "description": "A unique code or identifier for the customer or client.",
+    "expected_type": "string"
+  },
+  "CustomerName": {
+    "aliases": [
+      "Customer Name",
+      "Client Name",
+      "Customer",
+      "Client",
+      "Bill To",
+      "Sold To",
+      "Customer Company",
+      "Client Company",
+      "Buyer Name",
+      "Purchaser",
+      "Customer Entity",
+      "Account Name"
+    ],
+    "description": "The name of the customer or client receiving the goods or services.",
+    "expected_type": "string"
+  },
+  "SupplierName": {
+    "aliases": [
+      "Supplier Name",
+      "Vendor Name",
+      "Supplier",
+      "Vendor",
+      "Provider Name",
+      "Service Provider",
+      "Contractor Name",
+      "Supplier Company",
+      "Vendor Company",
+      "Provider",
+      "Seller Name",
+      "Merchant"
+    ],
+    "description": "The name of the supplier or vendor providing the goods or services.",
+    "expected_type": "string"
+  },
+  "SupplierCode": {
+    "aliases": [
+      "Supplier Code",
+      "Vendor Code",
+      "Supplier ID",
+      "Vendor ID",
+      "Supplier #",
+      "Vendor #",
+      "Provider Code",
+      "Supplier Ref",
+      "Vendor Ref",
+      "Supplier Number"
+    ],
+    "description": "A unique code or identifier for the supplier or vendor.",
+    "expected_type": "string"
+  },
+  "InvoiceNumber": {
+    "aliases": [
+      "Invoice Number",
+      "Invoice #",
+      "Inv No",
+      "Invoice ID",
+      "Bill Number",
+      "Document Number",
+      "Reference Number",
+      "Invoice Ref",
+      "Inv #",
+      "Document ID",
+      "Bill #",
+      "Invoice Code"
+    ],
+    "description": "The unique number or identifier assigned to the invoice document.",
+    "expected_type": "string"
+  },
+  "InvoiceAmount": {
+    "aliases": [
+      "Invoice Amount",
+      "Total Amount",
+      "Amount Due",
+      "Invoice Total",
+      "Bill Amount",
+      "Total Due",
+      "Amount",
+      "Invoice Value",
+      "Total Value",
+      "Grand Total",
+      "Final Amount",
+      "Net Amount"
+    ],
+    "description": "The total monetary amount of the invoice including all charges, taxes, and fees.",
+    "expected_type": "currency"
   }
 }

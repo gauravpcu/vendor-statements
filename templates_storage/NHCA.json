@@ -32,5 +32,5 @@
             "mapped_field": "TotalAmount"
         }
     ],
-    "skip_rows": 0
+    "skip_rows": 4
 }

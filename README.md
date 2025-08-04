@@ -119,7 +119,7 @@ Internet → Security Group → EC2 Instance → Docker Container (Flask App)
 2. **Auto-Processing**: The system automatically detects file types and applies matching templates
 3. **Review Mappings**: Verify and adjust field mappings as needed
 4. **Process Data**: Extract structured data from your statements
-5. **Download Results**: Export processed data as CSV or Excel
+5. **Download Results**: Export processed data as Excel with standardized columns
 
 ### Template Management
 

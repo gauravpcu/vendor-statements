@@ -1264,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                                 </div>
                                                 <div class="template-action-buttons">
                                                     <button class="process-file-button btn btn-success btn-sm" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}">🚀 Process</button>
-                                                    <button class="download-processed-button btn btn-primary btn-sm" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download Processed Data</button>
+                                                    <button class="download-processed-button btn btn-primary btn-sm" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📊 Download Excel</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1634,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // Disable button to prevent multiple clicks during download
             target.disabled = true;
-            target.textContent = 'Preparing Download...';
+            target.textContent = 'Preparing Excel...';
 
             fetch('/download_processed_data', {
                 method: 'POST',
@@ -1679,13 +1679,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     document.body.removeChild(a);
                     displayMessage(`Download started for ${filename}.`);
                     target.disabled = false; // Re-enable button
-                    target.textContent = 'Download Processed Data';
+                    target.textContent = '📊 Download Excel';
                 })
                 .catch(error => {
                     console.error(`[Download Processed Button] Error fetching or processing download for ${fileIdentifier}:`, error);
                     displayMessage(`Error preparing download for ${fileIdentifier}: ${error.message}`, true);
                     target.disabled = false; // Re-enable button on error
-                    target.textContent = 'Download Processed Data';
+                    target.textContent = '📊 Download Excel';
                 });
         }
     });
