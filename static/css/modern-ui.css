@@ -297,13 +297,14 @@ body {
 .upload-area-compact {
     border: 2px dashed #cbd5e0;
     border-radius: 12px;
-    padding: 20px; /* Reduced from 40px (50% reduction) */
+    padding: 20px;
+    /* Reduced from 40px (50% reduction) */
     text-align: center;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     transition: all 0.3s ease;
-    flex: 1;
-    min-width: 300px; /* 75% of typical width */
-    max-width: 450px; /* 75% of typical width */
+    flex: 3;
+    /* 75% of the space */
+    min-width: 300px;
 }
 
 .upload-area-compact:hover {
@@ -318,25 +319,33 @@ body {
 }
 
 .upload-icon-compact {
-    font-size: 2rem; /* Reduced from 3rem */
+    font-size: 2rem;
+    /* Reduced from 3rem */
     color: #cbd5e0;
-    margin-bottom: 8px; /* Reduced from 16px */
+    margin-bottom: 8px;
+    /* Reduced from 16px */
 }
 
 .upload-text-compact {
-    font-size: 1rem; /* Reduced from 1.125rem */
+    font-size: 1rem;
+    /* Reduced from 1.125rem */
     color: #6c757d;
-    margin-bottom: 8px; /* Reduced from 16px */
+    margin-bottom: 8px;
+    /* Reduced from 16px */
 }
 
 .upload-hint-compact {
-    font-size: 0.75rem; /* Reduced from 0.875rem */
+    font-size: 0.75rem;
+    /* Reduced from 0.875rem */
     color: #9ca3af;
 }
 
 .upload-button-container {
     display: flex;
     align-items: center;
+    flex: 1;
+    /* 25% of the space */
+    justify-content: center;
 }
 
 .upload-button-compact {
@@ -350,11 +359,11 @@ body {
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .upload-area-compact {
         max-width: 100%;
     }
-    
+
     .upload-button-container {
         justify-content: center;
         margin-top: 15px;
@@ -384,23 +393,26 @@ body {
     left: 0;
     bottom: 0;
     right: 0;
-    background-image: linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.2) 25%,
-        transparent 25%,
-        transparent 50%,
-        rgba(255, 255, 255, 0.2) 50%,
-        rgba(255, 255, 255, 0.2) 75%,
-        transparent 75%,
-        transparent
-    );
+    background-image: linear-gradient(-45deg,
+            rgba(255, 255, 255, 0.2) 25%,
+            transparent 25%,
+            transparent 50%,
+            rgba(255, 255, 255, 0.2) 50%,
+            rgba(255, 255, 255, 0.2) 75%,
+            transparent 75%,
+            transparent);
     background-size: 1rem 1rem;
     animation: progress-bar-stripes 1s linear infinite;
 }
 
 @keyframes progress-bar-stripes {
-    0% { background-position: 1rem 0; }
-    100% { background-position: 0 0; }
+    0% {
+        background-position: 1rem 0;
+    }
+
+    100% {
+        background-position: 0 0;
+    }
 }
 
 /* ===== FILE ENTRIES ===== */
@@ -444,9 +456,17 @@ body {
     font-size: 0.75rem;
 }
 
-.file-icon.xlsx { background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%); }
-.file-icon.csv { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
-.file-icon.pdf { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); }
+.file-icon.xlsx {
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+}
+
+.file-icon.csv {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+}
+
+.file-icon.pdf {
+    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+}
 
 .file-name {
     font-weight: 500;
@@ -703,11 +723,24 @@ body {
     text-transform: uppercase;
 }
 
-.file-type-badge.pdf { background: #fee2e2; color: #dc2626; }
-.file-type-badge.xlsx, .file-type-badge.xls { background: #dbeafe; color: #2563eb; }
-.file-type-badge.csv { background: #dcfce7; color: #16a34a; }
+.file-type-badge.pdf {
+    background: #fee2e2;
+    color: #dc2626;
+}
 
-.headers-count, .mappings-count {
+.file-type-badge.xlsx,
+.file-type-badge.xls {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.file-type-badge.csv {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.headers-count,
+.mappings-count {
     font-size: 0.875rem;
     color: #6b7280;
     background: #f3f4f6;
@@ -809,61 +842,107 @@ body {
 }
 
 /* ===== UTILITIES ===== */
-.text-center { text-align: center; }
-.text-left { text-align: left; }
-.text-right { text-align: right; }
+.text-center {
+    text-align: center;
+}
 
-.mb-1 { margin-bottom: 8px; }
-.mb-2 { margin-bottom: 16px; }
-.mb-3 { margin-bottom: 24px; }
-.mb-4 { margin-bottom: 32px; }
+.text-left {
+    text-align: left;
+}
 
-.mt-1 { margin-top: 8px; }
-.mt-2 { margin-top: 16px; }
-.mt-3 { margin-top: 24px; }
-.mt-4 { margin-top: 32px; }
+.text-right {
+    text-align: right;
+}
 
-.d-flex { display: flex; }
-.align-items-center { align-items: center; }
-.justify-content-between { justify-content: space-between; }
-.gap-2 { gap: 16px; }
-.gap-3 { gap: 24px; }
+.mb-1 {
+    margin-bottom: 8px;
+}
 
-.w-100 { width: 100%; }
+.mb-2 {
+    margin-bottom: 16px;
+}
+
+.mb-3 {
+    margin-bottom: 24px;
+}
+
+.mb-4 {
+    margin-bottom: 32px;
+}
+
+.mt-1 {
+    margin-top: 8px;
+}
+
+.mt-2 {
+    margin-top: 16px;
+}
+
+.mt-3 {
+    margin-top: 24px;
+}
+
+.mt-4 {
+    margin-top: 32px;
+}
+
+.d-flex {
+    display: flex;
+}
+
+.align-items-center {
+    align-items: center;
+}
+
+.justify-content-between {
+    justify-content: space-between;
+}
+
+.gap-2 {
+    gap: 16px;
+}
+
+.gap-3 {
+    gap: 24px;
+}
+
+.w-100 {
+    width: 100%;
+}
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
     body {
         padding: 10px;
     }
-    
+
     .main-container {
         border-radius: 12px;
     }
-    
+
     .header {
         padding: 24px;
     }
-    
+
     .header h1 {
         font-size: 2rem;
     }
-    
+
     .content {
         padding: 24px;
     }
-    
+
     .navigation {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .chatbot {
         width: calc(100vw - 20px);
         right: 10px;
         bottom: 10px;
     }
-    
+
     .modal-content {
         width: 95%;
         margin: 10px;
@@ -872,23 +951,49 @@ body {
 
 /* ===== ANIMATIONS ===== */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes slideIn {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(0); }
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
 }
 
 @keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 @keyframes slideOutRight {
-    from { transform: translateX(0); opacity: 1; }
-    to { transform: translateX(100%); opacity: 0; }
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
 }
 
 .fade-in {
@@ -897,7 +1002,9 @@ body {
 
 .slide-in {
     animation: slideIn 0.5s ease-out;
-}/* =
+}
+
+/* =
 ==== EXTRACTED TEXT SECTION ===== */
 .extracted-text-container {
     background: #f8f9fa;
@@ -958,7 +1065,9 @@ body {
 
 .extracted-text-copy-btn:active {
     background: #004085;
-}/* 
+}
+
+/* 
 ===== SAVE TEMPLATE SECTION ===== */
 .save-template-box {
     margin-top: 15px;
@@ -1036,7 +1145,9 @@ body {
     margin: 10px 0;
     color: #721c24;
     font-size: 14px;
-}/* AI
+}
+
+/* AI
  Remap Button Styling */
 .ai-remap-button {
     background: #17a2b8 !important;
@@ -1085,7 +1196,7 @@ body {
     padding: 12px;
     margin: 10px 0;
     font-size: 13px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .ai-analysis-results .ai-stats {
@@ -1096,11 +1207,13 @@ body {
 }
 
 .ai-analysis-results .ai-stat {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.2);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
-}/* ===== T
+}
+
+/* ===== T
 EMPLATE CONTROLS LAYOUT ===== */
 .template-controls-row {
     display: flex;
@@ -1156,17 +1269,17 @@ EMPLATE CONTROLS LAYOUT ===== */
         align-items: stretch;
         gap: 10px;
     }
-    
+
     .template-select-container {
         flex-direction: column;
         align-items: stretch;
         gap: 5px;
     }
-    
+
     .template-action-buttons {
         justify-content: center;
     }
-    
+
     .file-meta-row {
         flex-direction: column;
         align-items: flex-start;

@@ -197,10 +197,30 @@ document.addEventListener('DOMContentLoaded', function () {
                 margin-bottom: 20px;
             `;
 
+            // Check if this is a CSV, XLS, or XLSX file to show line numbers
+            const showLineNumbers = ['CSV', 'XLS', 'XLSX'].includes(previewData.file_type.toUpperCase());
+
             // Table header
             if (previewData.headers && previewData.headers.length > 0) {
                 const thead = document.createElement('thead');
                 const headerRow = document.createElement('tr');
+
+                // Add line number header if applicable
+                if (showLineNumbers) {
+                    const lineNumTh = document.createElement('th');
+                    lineNumTh.textContent = '#';
+                    lineNumTh.style.cssText = `
+                        background: #e9ecef;
+                        padding: 8px;
+                        border: 1px solid #dee2e6;
+                        font-weight: bold;
+                        text-align: center;
+                        min-width: 40px;
+                        color: #495057;
+                    `;
+                    headerRow.appendChild(lineNumTh);
+                }
+
                 previewData.headers.forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
@@ -222,6 +242,22 @@ document.addEventListener('DOMContentLoaded', function () {
             previewData.data_rows.forEach((row, index) => {
                 const tr = document.createElement('tr');
                 tr.style.backgroundColor = index % 2 === 0 ? '#fff' : '#f8f9fa';
+
+                // Add line number cell if applicable
+                if (showLineNumbers) {
+                    const lineNumTd = document.createElement('td');
+                    lineNumTd.textContent = index + 1;
+                    lineNumTd.style.cssText = `
+                        padding: 8px;
+                        border: 1px solid #dee2e6;
+                        background: #e9ecef;
+                        font-weight: bold;
+                        text-align: center;
+                        min-width: 40px;
+                        color: #495057;
+                    `;
+                    tr.appendChild(lineNumTd);
+                }
 
                 if (previewData.headers) {
                     previewData.headers.forEach(header => {
@@ -1223,24 +1259,19 @@ document.addEventListener('DOMContentLoaded', function () {
                                                     <select id="templateSelect-${fileIdentifierSafe}" class="template-select modern-select" data-file-identifier="${fileResult.filename}" data-file-identifier-safe="${fileIdentifierSafe}" data-file-type="${fileResult.file_type}">
                                                         <option value="">-- Select a Template --</option>
                                                     </select>
+                                                    ${(fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') ?
+                                            `<button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-settings-button apply-skip-rows-btn btn btn-secondary btn-sm">Apply Settings</button>` : ''}
                                                 </div>
                                                 <div class="template-action-buttons">
                                                     <button class="process-file-button btn btn-success btn-sm" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}">🚀 Process</button>
-                                                    <button class="view-file-button btn btn-secondary btn-sm" data-file-identifier="${fileResult.filename}">📄 View Original</button>
-                                                    <button class="download-processed-button btn btn-primary btn-sm" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download</button>
+                                                    <button class="download-processed-button btn btn-primary btn-sm" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download Processed Data</button>
                                                 </div>
                                             </div>
                                         </div>
                                     `);
                                 }
 
-                                // 3. Apply Settings button (conditional)
-                                if (fileResult.file_type === 'CSV' || fileResult.file_type === 'XLSX' || fileResult.file_type === 'XLS') {
-                                    // This button will be a direct flex item in file-settings-box
-                                    settingsItems.push(`
-                                        <button type="button" id="applySkipRows-${fileIdentifierSafe}" class="apply-settings-button apply-skip-rows-btn btn btn-secondary btn-sm">Apply Settings</button>
-                                    `);
-                                }
+                                // Apply Settings button moved to template controls row
 
                                 const settingsBoxHTML = settingsItems.length > 0 ? `<div class="file-settings-box">${settingsItems.join('')}</div>` : '';
                                 // --- End of updated grouped controls logic ---
