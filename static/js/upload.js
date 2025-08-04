@@ -1275,8 +1275,8 @@ document.addEventListener('DOMContentLoaded', function () {
                                     ${settingsBoxHTML}
                                     <div class="mapping-controls-box">
                                         <button class="process-file-button btn btn-success" data-file-identifier="${fileResult.filename}" data-file-type="${fileResult.file_type}" data-file-index="${index}" ${!fileResult.success ? 'disabled' : ''}>🚀 Process File Data</button>
-                                        <button class="preview-file-button btn btn-info" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>👁️ Preview File</button>
-                                        <button class="view-file-button btn btn-secondary" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>📄 View Raw File</button>
+                                        <button class="preview-file-button btn btn-info" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>👁️ View File</button>
+                                        <button class="view-file-button btn btn-secondary" data-file-identifier="${fileResult.filename}" ${!fileResult.success ? 'disabled' : ''}>📄 View Original</button>
                                         <button class="download-processed-button btn btn-primary" data-file-identifier="${fileResult.filename}" style="display:none;" disabled>📥 Download Results</button>
                                     </div>
                                     ${saveTemplateButtonHTML}
@@ -1569,12 +1569,35 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if (target.classList.contains('preview-file-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
             console.log(`[Preview File Button Clicked] File Identifier: ${fileIdentifier}`);
-            showFilePreview(fileIdentifier);
+            
+            // Get file type from the button's data or from the file entry
+            const fileEntryElement = target.closest('.file-entry');
+            const fileTypeElement = fileEntryElement.querySelector('.file-type-badge');
+            const fileType = fileTypeElement ? fileTypeElement.textContent.trim() : 'UNKNOWN';
+            
+            // Use the new file viewer for better preview experience
+            if (window.fileViewer && fileType !== 'UNKNOWN') {
+                window.fileViewer.viewFile(fileIdentifier, fileType);
+            } else {
+                // Fallback to old preview method
+                showFilePreview(fileIdentifier);
+            }
         } else if (target.classList.contains('view-file-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
             console.log(`[View File Button Clicked] File Identifier: ${fileIdentifier}`);
-            // Open the raw file in a new tab - this will show the original content
-            window.open(`/view_uploaded_file/${encodeURIComponent(fileIdentifier)}`, '_blank');
+            
+            // Get file type for the new viewer
+            const fileEntryElement = target.closest('.file-entry');
+            const fileTypeElement = fileEntryElement.querySelector('.file-type-badge');
+            const fileType = fileTypeElement ? fileTypeElement.textContent.trim() : 'UNKNOWN';
+            
+            // Use the new file viewer for better raw file viewing
+            if (window.fileViewer && fileType !== 'UNKNOWN') {
+                window.fileViewer.viewFile(fileIdentifier, fileType);
+            } else {
+                // Fallback to opening in new tab
+                window.open(`/view_uploaded_file/${encodeURIComponent(fileIdentifier)}`, '_blank');
+            }
         } else if (target.classList.contains('download-processed-button')) {
             const fileIdentifier = target.dataset.fileIdentifier;
             console.log(`[Download Processed Button Clicked] File Identifier: ${fileIdentifier}`);
