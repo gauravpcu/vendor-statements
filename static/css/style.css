@@ -522,7 +522,7 @@ h1:after {
 }
 
 .file-settings-box .skip-rows-input {
-    width: 60px; /* Smaller width for number input */
+    width: 100px; /* Increased width for better usability */
 }
 
 .file-settings-box .template-select {
