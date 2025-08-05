@@ -16,9 +16,9 @@ echo "Repository: $ECR_REPOSITORY"
 echo "Tag: $IMAGE_TAG"
 echo
 
-# Build the image
-echo "🔨 Building Docker image..."
-docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+# Build the image for amd64 platform (EC2 compatibility)
+echo "🔨 Building Docker image for amd64 platform..."
+docker build --platform linux/amd64 -t $ECR_REPOSITORY:$IMAGE_TAG .
 
 # Tag for ECR
 ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
